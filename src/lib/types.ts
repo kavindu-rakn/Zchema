@@ -12,7 +12,7 @@ export interface TemplateField {
   label: string;
   type: FieldType;
   required: boolean;
-  options: string[]; // Only used when type === "select"
+  options?: string[]; // Only used when type === "select"
 }
 
 /** profiles table row */
