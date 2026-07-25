@@ -84,15 +84,34 @@ VALUES (
   }'::jsonb
 );
 
--- ── NOTE ────────────────────────────────────────────────────
--- Profiles are auto-created by the `handle_new_user` trigger
--- when users sign up through Supabase Auth.
--- To manually create test profiles, first create users in
--- Supabase Auth, then update their roles:
+-- ── 4. Test Profiles ────────────────────────────────────────
+-- ⚠️  IMPORTANT: These inserts require matching users in auth.users.
+-- Create these 3 users first via Supabase Dashboard → Authentication → Users:
+--   1. admin@schemashift.test
+--   2. contributor@schemashift.test
+--   3. viewer@schemashift.test
+-- Then replace the UUIDs below with the actual UUIDs from auth.users.
+-- Alternatively, run these UPDATE statements after signup:
+
+-- Option A: Direct inserts (requires auth.users entries to exist first)
+/*
+INSERT INTO public.profiles (id, email, role) VALUES
+  ('REPLACE-WITH-ADMIN-UUID',       'admin@schemashift.test',       'TEMPLATE_ADMIN'),
+  ('REPLACE-WITH-CONTRIBUTOR-UUID', 'contributor@schemashift.test', 'DATA_CONTRIBUTOR'),
+  ('REPLACE-WITH-VIEWER-UUID',      'viewer@schemashift.test',      'VIEWER')
+ON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role;
+*/
+
+-- Option B: Update roles after users sign up (recommended)
+-- The handle_new_user trigger auto-creates profiles as VIEWER.
+-- Run these after each user signs up to assign roles:
 --
 --   UPDATE public.profiles SET role = 'TEMPLATE_ADMIN'
---   WHERE email = 'admin@example.com';
+--   WHERE email = 'admin@schemashift.test';
 --
 --   UPDATE public.profiles SET role = 'DATA_CONTRIBUTOR'
---   WHERE email = 'contributor@example.com';
+--   WHERE email = 'contributor@schemashift.test';
+--
+--   -- viewer@schemashift.test already defaults to 'VIEWER'
 -- ────────────────────────────────────────────────────────────
+
