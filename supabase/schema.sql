@@ -124,6 +124,12 @@ CREATE POLICY "profiles_select_admin"
   TO authenticated
   USING (public.get_user_role() = 'TEMPLATE_ADMIN');
 
+-- DATA_CONTRIBUTOR can read all profiles (spec: SELECT on profiles).
+CREATE POLICY "profiles_select_contributor"
+  ON public.profiles FOR SELECT
+  TO authenticated
+  USING (public.get_user_role() = 'DATA_CONTRIBUTOR');
+
 -- TEMPLATE_ADMIN can update any profile (e.g. role changes).
 CREATE POLICY "profiles_update_admin"
   ON public.profiles FOR UPDATE
