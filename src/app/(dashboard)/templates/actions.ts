@@ -44,7 +44,7 @@ export async function createTemplate(data: Partial<Template>) {
 
   const { data: result, error } = await supabase
     .from('templates')
-    .insert([{ ...data, user_id: user.id }])
+    .insert([{ ...data }])
     .select()
     .single()
 
