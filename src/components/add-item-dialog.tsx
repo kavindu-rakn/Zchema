@@ -8,6 +8,7 @@ import { DynamicForm } from "./dynamic-form";
 import { createItem } from "@/app/(dashboard)/catalog/actions";
 import { Template, UserRole } from "@/lib/types";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 interface AddItemDialogProps {
   categoryId: string;
@@ -20,9 +21,14 @@ export function AddItemDialog({ categoryId, template, userRole }: AddItemDialogP
   const router = useRouter();
 
   const handleSubmit = async (data: Record<string, any>) => {
-    await createItem(categoryId, data);
-    setOpen(false);
-    router.refresh();
+    try {
+      await createItem(categoryId, data);
+      toast.success('Item added successfully');
+      setOpen(false);
+      router.refresh();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to add item');
+    }
   };
 
   // VIEWERs cannot add items
