@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Item, Template } from "@/lib/types";
+import { Item, Template, UserRole } from "@/lib/types";
 import {
   Table,
   TableBody,
@@ -27,9 +27,10 @@ interface ItemsDataTableProps {
   template: Template;
   items: Item[];
   categoryId: string;
+  userRole: UserRole;
 }
 
-export function ItemsDataTable({ template, items, categoryId }: ItemsDataTableProps) {
+export function ItemsDataTable({ template, items, categoryId, userRole }: ItemsDataTableProps) {
   const router = useRouter();
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
@@ -86,7 +87,9 @@ export function ItemsDataTable({ template, items, categoryId }: ItemsDataTablePr
                 {field.label}
               </TableHead>
             ))}
-            <TableHead className="w-[80px] text-zinc-400 text-right">Actions</TableHead>
+            {userRole !== 'VIEWER' && (
+              <TableHead className="w-[80px] text-zinc-400 text-right">Actions</TableHead>
+            )}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -97,30 +100,32 @@ export function ItemsDataTable({ template, items, categoryId }: ItemsDataTablePr
                   {renderCellValue(item.data[field.key], field.type)}
                 </TableCell>
               ))}
-              <TableCell className="text-right">
-                <DropdownMenu>
-                  <DropdownMenuTrigger className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 h-8 w-8 p-0 hover:bg-zinc-800 hover:text-zinc-50 transition-colors">
-                    <MoreHorizontal className="h-4 w-4" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-[160px] bg-zinc-950 border-zinc-800">
-                    <DropdownMenuItem
-                      onClick={() => setEditingItem(item)}
-                      className="text-zinc-300 hover:text-white hover:bg-zinc-800 cursor-pointer focus:bg-zinc-800"
-                    >
-                      <Pencil className="mr-2 h-4 w-4" />
-                      Edit Item
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => handleDelete(item.id)}
-                      disabled={isDeleting === item.id}
-                      className="text-red-400 hover:text-red-300 hover:bg-red-500/10 cursor-pointer focus:bg-red-500/10 focus:text-red-300"
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      {isDeleting === item.id ? "Deleting..." : "Delete Item"}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </TableCell>
+              {userRole !== 'VIEWER' && (
+                <TableCell className="text-right">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 h-8 w-8 p-0 hover:bg-zinc-800 hover:text-zinc-50 transition-colors">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-[160px] bg-zinc-950 border-zinc-800">
+                      <DropdownMenuItem
+                        onClick={() => setEditingItem(item)}
+                        className="text-zinc-300 hover:text-white hover:bg-zinc-800 cursor-pointer focus:bg-zinc-800"
+                      >
+                        <Pencil className="mr-2 h-4 w-4" />
+                        Edit Item
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleDelete(item.id)}
+                        disabled={isDeleting === item.id}
+                        className="text-red-400 hover:text-red-300 hover:bg-red-500/10 cursor-pointer focus:bg-red-500/10 focus:text-red-300"
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        {isDeleting === item.id ? "Deleting..." : "Delete Item"}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
+              )}
             </TableRow>
           ))}
         </TableBody>

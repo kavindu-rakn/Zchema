@@ -6,15 +6,16 @@ import { Plus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DynamicForm } from "./dynamic-form";
 import { createItem } from "@/app/(dashboard)/catalog/actions";
-import { Template } from "@/lib/types";
+import { Template, UserRole } from "@/lib/types";
 import { useRouter } from "next/navigation";
 
 interface AddItemDialogProps {
   categoryId: string;
   template: Template;
+  userRole: UserRole;
 }
 
-export function AddItemDialog({ categoryId, template }: AddItemDialogProps) {
+export function AddItemDialog({ categoryId, template, userRole }: AddItemDialogProps) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
 
@@ -23,6 +24,9 @@ export function AddItemDialog({ categoryId, template }: AddItemDialogProps) {
     setOpen(false);
     router.refresh();
   };
+
+  // VIEWERs cannot add items
+  if (userRole === 'VIEWER') return null;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

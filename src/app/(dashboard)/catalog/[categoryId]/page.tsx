@@ -1,6 +1,7 @@
 import { fetchCategoryWithTemplate, fetchItems } from "../actions";
 import { ItemsDataTable } from "@/components/items-data-table";
 import { AddItemDialog } from "@/components/add-item-dialog";
+import { createClient } from "@/utils/supabase/server";
 import { notFound } from "next/navigation";
 import { Metadata } from "next";
 
@@ -26,6 +27,13 @@ export async function generateMetadata({ params }: CatalogPageProps): Promise<Me
 
 export default async function CatalogPage({ params }: CatalogPageProps) {
   const { categoryId } = await params;
+
+  // Fetch role
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user!.id).single();
+  const userRole = profile?.role ?? "VIEWER";
+
   let categoryWithTemplate;
   let items;
 
@@ -50,16 +58,18 @@ export default async function CatalogPage({ params }: CatalogPageProps) {
             Using template: <span className="font-medium text-zinc-300">{template.name}</span>
           </p>
         </div>
-        <AddItemDialog categoryId={category.id} template={template} />
+        <AddItemDialog categoryId={category.id} template={template} userRole={userRole} />
       </div>
 
       <div className="flex-1">
         <ItemsDataTable 
           template={template} 
           items={items} 
-          categoryId={category.id} 
+          categoryId={category.id}
+          userRole={userRole}
         />
       </div>
     </div>
   );
 }
+
