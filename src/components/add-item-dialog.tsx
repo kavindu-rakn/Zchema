@@ -6,23 +6,33 @@ import { Plus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DynamicForm } from "./dynamic-form";
 import { createItem } from "@/app/(dashboard)/catalog/actions";
-import { Template } from "@/lib/types";
+import { Template, UserRole } from "@/lib/types";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 interface AddItemDialogProps {
   categoryId: string;
   template: Template;
+  userRole: UserRole;
 }
 
-export function AddItemDialog({ categoryId, template }: AddItemDialogProps) {
+export function AddItemDialog({ categoryId, template, userRole }: AddItemDialogProps) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
 
   const handleSubmit = async (data: Record<string, any>) => {
-    await createItem(categoryId, data);
-    setOpen(false);
-    router.refresh();
+    try {
+      await createItem(categoryId, data);
+      toast.success('Item added successfully');
+      setOpen(false);
+      router.refresh();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to add item');
+    }
   };
+
+  // VIEWERs cannot add items
+  if (userRole === 'VIEWER') return null;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

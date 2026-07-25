@@ -5,12 +5,13 @@ import { Template } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
-export default async function TemplateDetailPage({ params }: { params: { id: string } }) {
-  const isNew = params.id === 'new'
+export default async function TemplateDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const isNew = id === 'new'
   let template: Template | null = null
 
   if (!isNew) {
-    template = await fetchTemplate(params.id)
+    template = await fetchTemplate(id)
     if (!template) {
       redirect('/templates')
     }
@@ -21,7 +22,7 @@ export default async function TemplateDetailPage({ params }: { params: { id: str
     if (isNew) {
       await createTemplate(data)
     } else {
-      await updateTemplate(params.id, data)
+      await updateTemplate(id, data)
     }
     redirect('/templates')
   }
@@ -43,3 +44,4 @@ export default async function TemplateDetailPage({ params }: { params: { id: str
     </div>
   )
 }
+

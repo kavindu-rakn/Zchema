@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Category, Template, CategoryNode } from '@/lib/types'
+import Link from 'next/link'
+import { Category, Template, CategoryNode, UserRole } from '@/lib/types'
 import { createCategory, updateCategory, deleteCategory } from '@/app/(dashboard)/categories/actions'
-import { Folder, FolderOpen, Plus, MoreVertical, Edit2, Trash2, FileJson } from 'lucide-react'
+import { Folder, FolderOpen, Plus, MoreVertical, Edit2, Trash2, FileJson, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -18,13 +19,16 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { motion, AnimatePresence } from 'framer-motion'
+import { toast } from 'sonner'
 
 interface CategoryTreeProps {
   categories: Category[]
   templates: Template[]
+  userRole: UserRole
 }
 
-export function CategoryTree({ categories, templates }: CategoryTreeProps) {
+
+export function CategoryTree({ categories, templates, userRole }: CategoryTreeProps) {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [editingCategory, setEditingCategory] = useState<Category | null>(null)
   const [selectedParentId, setSelectedParentId] = useState<string | null>(null)
@@ -74,16 +78,18 @@ export function CategoryTree({ categories, templates }: CategoryTreeProps) {
           name: formData.name,
           template_id: formData.template_id
         })
+        toast.success('Category updated')
       } else {
         await createCategory({
           name: formData.name,
           parent_id: selectedParentId,
           template_id: formData.template_id
         })
+        toast.success('Category created')
       }
       setIsAddDialogOpen(false)
-    } catch (error) {
-      console.error('Failed to save category', error)
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to save category')
     } finally {
       setIsSubmitting(false)
     }
@@ -93,8 +99,9 @@ export function CategoryTree({ categories, templates }: CategoryTreeProps) {
     if (confirm('Are you sure you want to delete this category? All subcategories will also be deleted.')) {
       try {
         await deleteCategory(id)
-      } catch (error) {
-        console.error('Failed to delete category', error)
+        toast.success('Category deleted')
+      } catch (error: any) {
+        toast.error(error?.message || 'Failed to delete category')
       }
     }
   }
@@ -103,6 +110,8 @@ export function CategoryTree({ categories, templates }: CategoryTreeProps) {
     const [isOpen, setIsOpen] = useState(false)
     const hasChildren = node.children.length > 0
     const template = templates.find(t => t.id === node.template_id)
+
+    const isAdmin = userRole === 'TEMPLATE_ADMIN'
 
     return (
       <div className="flex flex-col">
@@ -125,23 +134,38 @@ export function CategoryTree({ categories, templates }: CategoryTreeProps) {
             )}
           </div>
           
-          <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-zinc-400 hover:text-emerald-400" onClick={() => handleOpenAddDialog(node.id)}>
-              <Plus className="h-4 w-4" />
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger className="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 h-8 w-8 text-zinc-400 hover:text-zinc-200 rounded-md transition-colors">
-                <MoreVertical className="h-4 w-4" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-40 border-zinc-800 bg-zinc-950 text-zinc-200">
-                <DropdownMenuItem onClick={() => handleOpenEditDialog(node)} className="focus:bg-zinc-800 focus:text-zinc-100 cursor-pointer">
-                  <Edit2 className="mr-2 h-4 w-4" /> Edit
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleDelete(node.id)} className="text-red-400 focus:bg-red-950/50 focus:text-red-400 cursor-pointer">
-                  <Trash2 className="mr-2 h-4 w-4" /> Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {/* View Items — visible to everyone */}
+            <Link
+              href={`/catalog/${node.id}`}
+              className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-emerald-400 px-2 py-1 rounded hover:bg-zinc-800 transition-colors"
+              onClick={e => e.stopPropagation()}
+            >
+              <ArrowRight className="h-3 w-3" />
+              View Items
+            </Link>
+
+            {/* Admin-only actions */}
+            {isAdmin && (
+              <>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-zinc-400 hover:text-emerald-400" onClick={() => handleOpenAddDialog(node.id)}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger className="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 h-8 w-8 text-zinc-400 hover:text-zinc-200 rounded-md transition-colors">
+                    <MoreVertical className="h-4 w-4" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-40 border-zinc-800 bg-zinc-950 text-zinc-200">
+                    <DropdownMenuItem onClick={() => handleOpenEditDialog(node)} className="focus:bg-zinc-800 focus:text-zinc-100 cursor-pointer">
+                      <Edit2 className="mr-2 h-4 w-4" /> Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleDelete(node.id)} className="text-red-400 focus:bg-red-950/50 focus:text-red-400 cursor-pointer">
+                      <Trash2 className="mr-2 h-4 w-4" /> Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            )}
           </div>
         </div>
 
@@ -168,10 +192,12 @@ export function CategoryTree({ categories, templates }: CategoryTreeProps) {
     <div className="w-full">
       <div className="flex justify-between items-center mb-6">
         <h3 className="text-lg font-medium text-zinc-100">Category Structure</h3>
-        <Button onClick={() => handleOpenAddDialog(null)} className="bg-emerald-500 hover:bg-emerald-600 text-white">
-          <Plus className="h-4 w-4 mr-2" />
-          Add Root Category
-        </Button>
+        {userRole === 'TEMPLATE_ADMIN' && (
+          <Button onClick={() => handleOpenAddDialog(null)} className="bg-emerald-500 hover:bg-emerald-600 text-white">
+            <Plus className="h-4 w-4 mr-2" />
+            Add Root Category
+          </Button>
+        )}
       </div>
 
       <div className="border border-zinc-800 rounded-lg bg-zinc-900/50 p-2 min-h-[300px]">

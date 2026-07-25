@@ -44,7 +44,6 @@ export async function updateCategory(id: string, data: { name?: string; parent_i
     name: data.name,
     parent_id: data.parent_id,
     template_id: data.template_id,
-    updated_at: new Date().toISOString()
   }).eq('id', id)
 
   if (error) throw new Error(error.message)
