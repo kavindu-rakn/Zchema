@@ -24,7 +24,7 @@ export default function Home() {
 
         <div className="flex items-center gap-3 mt-4">
           <Link
-            href="/login"
+            href="/signup"
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition-all hover:shadow-md hover:shadow-primary/20"
           >
             Get Started
