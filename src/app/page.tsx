@@ -34,7 +34,7 @@ export default function Home() {
             href="/login"
             className="inline-flex items-center gap-2 rounded-lg border border-border bg-secondary/30 px-5 py-2.5 text-sm font-medium text-foreground hover:bg-secondary/60 transition-all"
           >
-            Sign In
+            Log In
           </Link>
         </div>
       </div>

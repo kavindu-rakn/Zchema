@@ -103,7 +103,7 @@ export default function SignupPage() {
           <div className="text-center text-sm text-zinc-400">
             Already have an account?{' '}
             <Link href="/login" className="text-emerald-400 hover:text-emerald-300 transition-colors">
-              Sign in
+              Log in
             </Link>
           </div>
         </CardFooter>
