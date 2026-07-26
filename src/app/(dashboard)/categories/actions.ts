@@ -24,6 +24,9 @@ export async function fetchCategories() {
 export async function createCategory(data: { name: string; parent_id?: string | null; template_id: string }) {
   const supabase = await createClient()
   
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+
   const { error } = await supabase.from('categories').insert([
     {
       name: data.name,
@@ -40,6 +43,9 @@ export async function createCategory(data: { name: string; parent_id?: string | 
 export async function updateCategory(id: string, data: { name?: string; parent_id?: string | null; template_id?: string }) {
   const supabase = await createClient()
   
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+
   const { error } = await supabase.from('categories').update({
     name: data.name,
     parent_id: data.parent_id,
@@ -54,6 +60,9 @@ export async function updateCategory(id: string, data: { name?: string; parent_i
 export async function deleteCategory(id: string) {
   const supabase = await createClient()
   
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+
   const { error } = await supabase.from('categories').delete().eq('id', id)
 
   if (error) throw new Error(error.message)

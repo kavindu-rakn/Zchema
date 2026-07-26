@@ -39,6 +39,26 @@ export async function fetchItems(categoryId: string) {
 export async function createItem(categoryId: string, data: Record<string, any>) {
   const supabase = await createClient();
 
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+
+  // Fetch template fields for validation
+  const { data: category, error: catError } = await supabase
+    .from("categories")
+    .select("template:templates(fields)")
+    .eq("id", categoryId)
+    .single();
+
+  if (catError) throw new Error(catError.message);
+  
+  const template = category.template as Template;
+  for (const field of template.fields) {
+    if (field.required && (data[field.key] === undefined || data[field.key] === null || data[field.key] === "")) {
+      throw new Error(`Missing required field: ${field.label}`);
+    }
+    // Note: further type checking could be added here
+  }
+
   const { error } = await supabase
     .from("items")
     .insert([{ category_id: categoryId, data }]);
@@ -50,6 +70,25 @@ export async function createItem(categoryId: string, data: Record<string, any>) 
 
 export async function updateItem(id: string, categoryId: string, data: Record<string, any>) {
   const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+
+  // Fetch template fields for validation
+  const { data: category, error: catError } = await supabase
+    .from("categories")
+    .select("template:templates(fields)")
+    .eq("id", categoryId)
+    .single();
+
+  if (catError) throw new Error(catError.message);
+  
+  const template = category.template as Template;
+  for (const field of template.fields) {
+    if (field.required && (data[field.key] === undefined || data[field.key] === null || data[field.key] === "")) {
+      throw new Error(`Missing required field: ${field.label}`);
+    }
+  }
 
   const { error } = await supabase
     .from("items")
@@ -63,6 +102,9 @@ export async function updateItem(id: string, categoryId: string, data: Record<st
 
 export async function deleteItem(id: string, categoryId: string) {
   const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
 
   const { error } = await supabase
     .from("items")

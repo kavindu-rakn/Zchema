@@ -10,7 +10,8 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   email      TEXT,
   role       TEXT NOT NULL DEFAULT 'VIEWER'
              CHECK (role IN ('TEMPLATE_ADMIN', 'DATA_CONTRIBUTOR', 'VIEWER')),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- ── 2. Templates ────────────────────────────────────────────
@@ -19,10 +20,11 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 --   [{ "key": "brand", "label": "Brand", "type": "string", "required": true, "options": [] }]
 CREATE TABLE IF NOT EXISTS public.templates (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name        TEXT NOT NULL,
+  name        TEXT NOT NULL UNIQUE,
   description TEXT,
   fields      JSONB NOT NULL DEFAULT '[]'::jsonb,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- ── 3. Categories ───────────────────────────────────────────
@@ -33,7 +35,8 @@ CREATE TABLE IF NOT EXISTS public.categories (
   name        TEXT NOT NULL,
   parent_id   UUID REFERENCES public.categories(id) ON DELETE CASCADE,
   template_id UUID NOT NULL REFERENCES public.templates(id) ON DELETE RESTRICT,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- ── 4. Items ────────────────────────────────────────────────
@@ -42,7 +45,8 @@ CREATE TABLE IF NOT EXISTS public.items (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   category_id UUID NOT NULL REFERENCES public.categories(id) ON DELETE CASCADE,
   data        JSONB NOT NULL DEFAULT '{}'::jsonb,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- ── 5. Indexes ──────────────────────────────────────────────
@@ -229,3 +233,43 @@ CREATE POLICY "items_delete_contributor"
   ON public.items FOR DELETE
   TO authenticated
   USING (public.get_user_role() IN ('TEMPLATE_ADMIN', 'DATA_CONTRIBUTOR'));
+
+
+-- ============================================================
+-- 8. Triggers for updated_at
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.update_modified_column()
+RETURNS TRIGGER AS \$\$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+\$\$ LANGUAGE plpgsql;
+
+CREATE TRIGGER update_profiles_modtime BEFORE UPDATE ON public.profiles FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
+CREATE TRIGGER update_templates_modtime BEFORE UPDATE ON public.templates FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
+CREATE TRIGGER update_categories_modtime BEFORE UPDATE ON public.categories FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
+CREATE TRIGGER update_items_modtime BEFORE UPDATE ON public.items FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
+
+-- ============================================================
+-- 9. Role Update Protection
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.protect_role_update()
+RETURNS TRIGGER AS \$\$
+BEGIN
+  IF NEW.role IS DISTINCT FROM OLD.role THEN
+    IF (SELECT role FROM public.profiles WHERE id = auth.uid()) != 'TEMPLATE_ADMIN' THEN
+      RAISE EXCEPTION 'Only TEMPLATE_ADMIN can change roles';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+\$\$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER ensure_role_protection BEFORE UPDATE ON public.profiles FOR EACH ROW EXECUTE FUNCTION public.protect_role_update();
+
+-- ============================================================
+-- 10. Unique Indexes for Categories
+-- ============================================================
+CREATE UNIQUE INDEX IF NOT EXISTS unique_category_name_parent ON public.categories (parent_id, name) WHERE parent_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS unique_category_name_root ON public.categories (name) WHERE parent_id IS NULL;

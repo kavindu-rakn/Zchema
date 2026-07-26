@@ -25,6 +25,10 @@ export function RoleSwitcher({ user, profile }: { user: any; profile: any }) {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedRole, setSelectedRole] = useState<string>(profile?.role || "VIEWER");
 
+  if (process.env.NODE_ENV !== "development") {
+    return null;
+  }
+
   const handleRoleChange = async () => {
     if (!user) return;
     setIsLoading(true);
