@@ -51,12 +51,15 @@ export async function createItem(categoryId: string, data: Record<string, any>) 
 
   if (catError) throw new Error(catError.message);
   
-  const template = category.template as Template;
-  for (const field of template.fields) {
-    if (field.required && (data[field.key] === undefined || data[field.key] === null || data[field.key] === "")) {
-      throw new Error(`Missing required field: ${field.label}`);
+  const templateData = category.template as any;
+  const fields = Array.isArray(templateData) ? templateData[0]?.fields : templateData?.fields;
+  
+  if (fields && Array.isArray(fields)) {
+    for (const field of fields) {
+      if (field.required && (data[field.key] === undefined || data[field.key] === null || data[field.key] === "")) {
+        throw new Error(`Missing required field: ${field.label}`);
+      }
     }
-    // Note: further type checking could be added here
   }
 
   const { error } = await supabase
@@ -83,10 +86,14 @@ export async function updateItem(id: string, categoryId: string, data: Record<st
 
   if (catError) throw new Error(catError.message);
   
-  const template = category.template as Template;
-  for (const field of template.fields) {
-    if (field.required && (data[field.key] === undefined || data[field.key] === null || data[field.key] === "")) {
-      throw new Error(`Missing required field: ${field.label}`);
+  const templateData = category.template as any;
+  const fields = Array.isArray(templateData) ? templateData[0]?.fields : templateData?.fields;
+  
+  if (fields && Array.isArray(fields)) {
+    for (const field of fields) {
+      if (field.required && (data[field.key] === undefined || data[field.key] === null || data[field.key] === "")) {
+        throw new Error(`Missing required field: ${field.label}`);
+      }
     }
   }
 
