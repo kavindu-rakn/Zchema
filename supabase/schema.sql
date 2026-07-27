@@ -1,24 +1,60 @@
 -- ============================================================
--- SchemaShift — Database Schema Migration
--- Run this in the Supabase SQL Editor (or via supabase db push)
+-- SchemaShift — Database Schema (Phase 1: schema composition)
+-- Run this in the Supabase SQL Editor (or via supabase db push).
+--
+-- MODEL: schema lives on the CATEGORY node and is composed down
+-- the tree. A category owns `own_fields` and may `override` fields
+-- it inherits from ancestors. Blueprints (formerly templates) are
+-- demoted to optional starter presets — no live link.
+--
+-- Load order: schema.sql  →  functions.sql  (resolvers, Increment 2).
 -- ============================================================
 
--- ── 1. Profiles ─────────────────────────────────────────────
+-- ============================================================
+-- 0. Destructive rebuild
+-- ------------------------------------------------------------
+-- ⚠️  DESTRUCTIVE. This drops every application table and its
+-- data. This is intentional for the Phase 1 overhaul — there is
+-- no back-compat shim. Do NOT run against production data you
+-- care about without a backup.
+-- ============================================================
+DROP TABLE IF EXISTS public.items          CASCADE;
+DROP TABLE IF EXISTS public.schema_versions CASCADE;
+DROP TABLE IF EXISTS public.attributes      CASCADE;
+DROP TABLE IF EXISTS public.categories      CASCADE;
+DROP TABLE IF EXISTS public.blueprints      CASCADE;
+DROP TABLE IF EXISTS public.templates       CASCADE;  -- legacy, pre-overhaul
+DROP TABLE IF EXISTS public.profiles        CASCADE;
+
+
+-- ============================================================
+-- 1. Profiles
+-- ------------------------------------------------------------
 -- Mirrors auth.users with an application-level role.
-CREATE TABLE IF NOT EXISTS public.profiles (
+-- New role vocabulary: "template admin" no longer makes sense
+-- once templates are demoted to optional blueprints.
+--   SCHEMA_ADMIN  (was TEMPLATE_ADMIN)
+--   DATA_EDITOR   (was DATA_CONTRIBUTOR)
+--   VIEWER        (unchanged)
+-- ============================================================
+CREATE TABLE public.profiles (
   id         UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email      TEXT,
   role       TEXT NOT NULL DEFAULT 'VIEWER'
-             CHECK (role IN ('TEMPLATE_ADMIN', 'DATA_CONTRIBUTOR', 'VIEWER')),
+             CHECK (role IN ('SCHEMA_ADMIN', 'DATA_EDITOR', 'VIEWER')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- ── 2. Templates ────────────────────────────────────────────
--- Each template defines a reusable field schema for items.
--- `fields` is a JSONB array:
---   [{ "key": "brand", "label": "Brand", "type": "string", "required": true, "options": [] }]
-CREATE TABLE IF NOT EXISTS public.templates (
+
+-- ============================================================
+-- 2. Blueprints (was `templates`)
+-- ------------------------------------------------------------
+-- Optional starter presets. Applying a blueprint COPIES its
+-- fields into a category's own_fields; there is no live link.
+-- `fields` is a JSONB array of SchemaField objects.
+-- ============================================================
+CREATE TABLE public.blueprints (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name        TEXT NOT NULL UNIQUE,
   description TEXT,
@@ -27,44 +63,144 @@ CREATE TABLE IF NOT EXISTS public.templates (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- ── 3. Categories ───────────────────────────────────────────
--- Hierarchical tree: parent_id references self.
--- Each category is linked to exactly one template.
-CREATE TABLE IF NOT EXISTS public.categories (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name        TEXT NOT NULL,
-  parent_id   UUID REFERENCES public.categories(id) ON DELETE CASCADE,
-  template_id UUID NOT NULL REFERENCES public.templates(id) ON DELETE RESTRICT,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+
+-- ============================================================
+-- 3. Categories — now own their schema
+-- ------------------------------------------------------------
+-- Hierarchical tree (parent_id references self).
+--   own_fields : JSONB array of SchemaField authored on THIS node.
+--   overrides  : JSONB object keyed by inherited field key, each
+--                value a FieldOverride patch (label/required/
+--                options/default/help_text/position only).
+--   blueprint_id : provenance only (nullable, SET NULL on delete).
+-- ============================================================
+CREATE TABLE public.categories (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name         TEXT NOT NULL,
+  slug         TEXT NOT NULL,
+  description  TEXT,
+  parent_id    UUID REFERENCES public.categories(id) ON DELETE CASCADE,
+  blueprint_id UUID REFERENCES public.blueprints(id) ON DELETE SET NULL,
+  own_fields   JSONB NOT NULL DEFAULT '[]'::jsonb,
+  overrides    JSONB NOT NULL DEFAULT '{}'::jsonb,
+  icon         TEXT,
+  color        TEXT,
+  position     INTEGER NOT NULL DEFAULT 0,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
--- ── 4. Items ────────────────────────────────────────────────
--- Dynamic item data stored as JSONB keyed to the template fields.
-CREATE TABLE IF NOT EXISTS public.items (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  category_id UUID NOT NULL REFERENCES public.categories(id) ON DELETE CASCADE,
-  data        JSONB NOT NULL DEFAULT '{}'::jsonb,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
--- ── 5. Indexes ──────────────────────────────────────────────
--- GIN index for fast JSONB containment / key-exists queries.
-CREATE INDEX IF NOT EXISTS idx_items_data_gin ON public.items USING gin (data);
-
--- Index for hierarchical category lookups.
-CREATE INDEX IF NOT EXISTS idx_categories_parent ON public.categories (parent_id);
-
--- Index for category → template joins.
-CREATE INDEX IF NOT EXISTS idx_categories_template ON public.categories (template_id);
-
--- Index for item → category joins.
-CREATE INDEX IF NOT EXISTS idx_items_category ON public.items (category_id);
 
 
 -- ============================================================
--- 6. Auto-create profile on signup (trigger)
+-- 4. Items — gain `schema_version`
+-- ------------------------------------------------------------
+-- Dynamic item data stored as JSONB keyed to the category's
+-- effective schema. `data` may contain a `__orphaned` sub-object
+-- holding values whose field has since disappeared.
+-- ============================================================
+CREATE TABLE public.items (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  category_id    UUID NOT NULL REFERENCES public.categories(id) ON DELETE CASCADE,
+  data           JSONB NOT NULL DEFAULT '{}'::jsonb,
+  schema_version INTEGER NOT NULL DEFAULT 1,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+
+-- ============================================================
+-- 5. Schema Versions — immutable audit trail
+-- ------------------------------------------------------------
+-- Populated in Phase 5. The table exists now so the FK graph is
+-- stable. Append-only (no UPDATE/DELETE RLS policy — Increment 4).
+-- ============================================================
+CREATE TABLE public.schema_versions (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  category_id    UUID NOT NULL REFERENCES public.categories(id) ON DELETE CASCADE,
+  version        INTEGER NOT NULL,
+  snapshot       JSONB NOT NULL,
+  change_summary JSONB NOT NULL DEFAULT '[]'::jsonb,
+  changed_by     UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (category_id, version)
+);
+
+
+-- ============================================================
+-- 6. Attributes — reusable field registry
+-- ------------------------------------------------------------
+-- Populated in Phase 6. The table exists now so the FK graph is
+-- stable and SchemaField.attribute_id has a target.
+-- ============================================================
+CREATE TABLE public.attributes (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  key         TEXT NOT NULL UNIQUE,
+  label       TEXT NOT NULL,
+  type        TEXT NOT NULL,
+  options     JSONB NOT NULL DEFAULT '[]'::jsonb,
+  unit        TEXT,
+  description TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+
+-- ============================================================
+-- 7. Indexes
+-- ============================================================
+-- GIN index for fast JSONB containment / key-exists queries on items.
+CREATE INDEX idx_items_data_gin ON public.items USING gin (data);
+
+-- Hierarchical category lookups.
+CREATE INDEX idx_categories_parent ON public.categories (parent_id);
+
+-- Category → blueprint provenance joins.
+CREATE INDEX idx_categories_blueprint ON public.categories (blueprint_id);
+
+-- Item → category joins.
+CREATE INDEX idx_items_category ON public.items (category_id);
+
+-- Slug uniqueness: unique within a parent, and unique among roots.
+CREATE UNIQUE INDEX unique_category_slug_parent
+  ON public.categories (parent_id, slug) WHERE parent_id IS NOT NULL;
+CREATE UNIQUE INDEX unique_category_slug_root
+  ON public.categories (slug) WHERE parent_id IS NULL;
+
+-- GIN index over own_fields for field-key lookups.
+CREATE INDEX idx_categories_own_fields ON public.categories USING gin (own_fields);
+
+-- Schema version history lookups, newest first.
+CREATE INDEX idx_schema_versions_category
+  ON public.schema_versions (category_id, version DESC);
+
+
+-- ============================================================
+-- 8. updated_at triggers
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.update_modified_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS update_profiles_modtime        ON public.profiles;
+DROP TRIGGER IF EXISTS update_blueprints_modtime      ON public.blueprints;
+DROP TRIGGER IF EXISTS update_categories_modtime      ON public.categories;
+DROP TRIGGER IF EXISTS update_items_modtime           ON public.items;
+DROP TRIGGER IF EXISTS update_attributes_modtime      ON public.attributes;
+
+CREATE TRIGGER update_profiles_modtime   BEFORE UPDATE ON public.profiles   FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
+CREATE TRIGGER update_blueprints_modtime BEFORE UPDATE ON public.blueprints FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
+CREATE TRIGGER update_categories_modtime BEFORE UPDATE ON public.categories FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
+CREATE TRIGGER update_items_modtime      BEFORE UPDATE ON public.items      FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
+CREATE TRIGGER update_attributes_modtime BEFORE UPDATE ON public.attributes FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
+-- NB: schema_versions is append-only; it has no updated_at column and no modtime trigger.
+
+
+-- ============================================================
+-- 9. Auto-create profile on signup
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER
@@ -77,9 +213,9 @@ BEGIN
   VALUES (
     NEW.id,
     NEW.email,
-    CASE 
-      WHEN NEW.email = 'admin@schemashift.lk' THEN 'TEMPLATE_ADMIN'
-      WHEN NEW.email = 'contributor@schemashift.lk' THEN 'DATA_CONTRIBUTOR'
+    CASE
+      WHEN NEW.email = 'admin@schemashift.lk'       THEN 'SCHEMA_ADMIN'
+      WHEN NEW.email = 'contributor@schemashift.lk' THEN 'DATA_EDITOR'
       ELSE 'VIEWER'
     END
   );
@@ -87,7 +223,6 @@ BEGIN
 END;
 $$;
 
--- Drop existing trigger if present, then re-create.
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
@@ -95,185 +230,66 @@ CREATE TRIGGER on_auth_user_created
 
 
 -- ============================================================
--- 7. Row Level Security (RLS) Policies
+-- 10. Role update protection
+-- ------------------------------------------------------------
+-- Only a SCHEMA_ADMIN may change any profile's role.
 -- ============================================================
-
--- ── Enable RLS on all tables ────────────────────────────────
-ALTER TABLE public.profiles   ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.templates  ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.items      ENABLE ROW LEVEL SECURITY;
-
--- ── Helper: get current user's role ─────────────────────────
-CREATE OR REPLACE FUNCTION public.get_user_role()
-RETURNS TEXT
-LANGUAGE sql
-STABLE
+CREATE OR REPLACE FUNCTION public.protect_role_update()
+RETURNS TRIGGER
+LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
 AS $$
-  SELECT role FROM public.profiles WHERE id = auth.uid();
-$$;
-
-
--- ────────────────────────────────────────────────────────────
--- PROFILES policies
--- ────────────────────────────────────────────────────────────
-
--- All authenticated users can read their own profile.
-CREATE POLICY "profiles_select_own"
-  ON public.profiles FOR SELECT
-  TO authenticated
-  USING (id = auth.uid());
-
--- TEMPLATE_ADMIN can read all profiles.
-CREATE POLICY "profiles_select_admin"
-  ON public.profiles FOR SELECT
-  TO authenticated
-  USING (public.get_user_role() = 'TEMPLATE_ADMIN');
-
--- DATA_CONTRIBUTOR can read all profiles (spec: SELECT on profiles).
-CREATE POLICY "profiles_select_contributor"
-  ON public.profiles FOR SELECT
-  TO authenticated
-  USING (public.get_user_role() = 'DATA_CONTRIBUTOR');
-
--- TEMPLATE_ADMIN can update any profile (e.g. role changes).
-CREATE POLICY "profiles_update_admin"
-  ON public.profiles FOR UPDATE
-  TO authenticated
-  USING (public.get_user_role() = 'TEMPLATE_ADMIN');
-
--- Users can update their own profile (email, etc.).
-CREATE POLICY "profiles_update_own"
-  ON public.profiles FOR UPDATE
-  TO authenticated
-  USING (id = auth.uid())
-  WITH CHECK (id = auth.uid());
-
-
--- ────────────────────────────────────────────────────────────
--- TEMPLATES policies
--- ────────────────────────────────────────────────────────────
-
--- Everyone can read templates.
-CREATE POLICY "templates_select_all"
-  ON public.templates FOR SELECT
-  TO authenticated
-  USING (true);
-
--- Only TEMPLATE_ADMIN can insert.
-CREATE POLICY "templates_insert_admin"
-  ON public.templates FOR INSERT
-  TO authenticated
-  WITH CHECK (public.get_user_role() = 'TEMPLATE_ADMIN');
-
--- Only TEMPLATE_ADMIN can update.
-CREATE POLICY "templates_update_admin"
-  ON public.templates FOR UPDATE
-  TO authenticated
-  USING (public.get_user_role() = 'TEMPLATE_ADMIN');
-
--- Only TEMPLATE_ADMIN can delete.
-CREATE POLICY "templates_delete_admin"
-  ON public.templates FOR DELETE
-  TO authenticated
-  USING (public.get_user_role() = 'TEMPLATE_ADMIN');
-
-
--- ────────────────────────────────────────────────────────────
--- CATEGORIES policies
--- ────────────────────────────────────────────────────────────
-
--- Everyone can read categories.
-CREATE POLICY "categories_select_all"
-  ON public.categories FOR SELECT
-  TO authenticated
-  USING (true);
-
--- Only TEMPLATE_ADMIN can insert.
-CREATE POLICY "categories_insert_admin"
-  ON public.categories FOR INSERT
-  TO authenticated
-  WITH CHECK (public.get_user_role() = 'TEMPLATE_ADMIN');
-
--- Only TEMPLATE_ADMIN can update.
-CREATE POLICY "categories_update_admin"
-  ON public.categories FOR UPDATE
-  TO authenticated
-  USING (public.get_user_role() = 'TEMPLATE_ADMIN');
-
--- Only TEMPLATE_ADMIN can delete.
-CREATE POLICY "categories_delete_admin"
-  ON public.categories FOR DELETE
-  TO authenticated
-  USING (public.get_user_role() = 'TEMPLATE_ADMIN');
-
-
--- ────────────────────────────────────────────────────────────
--- ITEMS policies
--- ────────────────────────────────────────────────────────────
-
--- Everyone can read items.
-CREATE POLICY "items_select_all"
-  ON public.items FOR SELECT
-  TO authenticated
-  USING (true);
-
--- TEMPLATE_ADMIN and DATA_CONTRIBUTOR can insert.
-CREATE POLICY "items_insert_contributor"
-  ON public.items FOR INSERT
-  TO authenticated
-  WITH CHECK (public.get_user_role() IN ('TEMPLATE_ADMIN', 'DATA_CONTRIBUTOR'));
-
--- TEMPLATE_ADMIN and DATA_CONTRIBUTOR can update.
-CREATE POLICY "items_update_contributor"
-  ON public.items FOR UPDATE
-  TO authenticated
-  USING (public.get_user_role() IN ('TEMPLATE_ADMIN', 'DATA_CONTRIBUTOR'));
-
--- TEMPLATE_ADMIN and DATA_CONTRIBUTOR can delete.
-CREATE POLICY "items_delete_contributor"
-  ON public.items FOR DELETE
-  TO authenticated
-  USING (public.get_user_role() IN ('TEMPLATE_ADMIN', 'DATA_CONTRIBUTOR'));
-
-
--- ============================================================
--- 8. Triggers for updated_at
--- ============================================================
-CREATE OR REPLACE FUNCTION public.update_modified_column()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = now();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER update_profiles_modtime BEFORE UPDATE ON public.profiles FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
-CREATE TRIGGER update_templates_modtime BEFORE UPDATE ON public.templates FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
-CREATE TRIGGER update_categories_modtime BEFORE UPDATE ON public.categories FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
-CREATE TRIGGER update_items_modtime BEFORE UPDATE ON public.items FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
-
--- ============================================================
--- 9. Role Update Protection
--- ============================================================
-CREATE OR REPLACE FUNCTION public.protect_role_update()
-RETURNS TRIGGER AS $$
 BEGIN
   IF NEW.role IS DISTINCT FROM OLD.role THEN
-    IF (SELECT role FROM public.profiles WHERE id = auth.uid()) != 'TEMPLATE_ADMIN' THEN
-      RAISE EXCEPTION 'Only TEMPLATE_ADMIN can change roles';
+    IF (SELECT role FROM public.profiles WHERE id = auth.uid()) <> 'SCHEMA_ADMIN' THEN
+      RAISE EXCEPTION 'Only SCHEMA_ADMIN can change roles';
     END IF;
   END IF;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
-CREATE TRIGGER ensure_role_protection BEFORE UPDATE ON public.profiles FOR EACH ROW EXECUTE FUNCTION public.protect_role_update();
+DROP TRIGGER IF EXISTS ensure_role_protection ON public.profiles;
+CREATE TRIGGER ensure_role_protection
+  BEFORE UPDATE ON public.profiles
+  FOR EACH ROW EXECUTE FUNCTION public.protect_role_update();
+
 
 -- ============================================================
--- 10. Unique Indexes for Categories
+-- 11. Cycle guard — a category must not become its own ancestor
+-- ------------------------------------------------------------
+-- Walks parent_id upward on INSERT / UPDATE OF parent_id and
+-- rejects any move that would place a node under its own descendant.
 -- ============================================================
-CREATE UNIQUE INDEX IF NOT EXISTS unique_category_name_parent ON public.categories (parent_id, name) WHERE parent_id IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS unique_category_name_root ON public.categories (name) WHERE parent_id IS NULL;
+CREATE OR REPLACE FUNCTION public.prevent_category_cycle()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  cur UUID := NEW.parent_id;
+BEGIN
+  WHILE cur IS NOT NULL LOOP
+    IF cur = NEW.id THEN
+      RAISE EXCEPTION 'Cannot move category "%" under its own descendant', NEW.name;
+    END IF;
+    SELECT parent_id INTO cur FROM public.categories WHERE id = cur;
+  END LOOP;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS categories_no_cycle ON public.categories;
+CREATE TRIGGER categories_no_cycle
+  BEFORE INSERT OR UPDATE OF parent_id ON public.categories
+  FOR EACH ROW EXECUTE FUNCTION public.prevent_category_cycle();
+
+
+-- ============================================================
+-- End of schema.sql
+-- ------------------------------------------------------------
+-- Resolver functions (get_effective_schema, get_category_tree, …)
+-- live in functions.sql (Increment 2), sourced AFTER this file.
+-- Integrity/validation triggers (Increment 3) and RLS policies
+-- (Increment 4) are added in their own increments.
+-- ============================================================
