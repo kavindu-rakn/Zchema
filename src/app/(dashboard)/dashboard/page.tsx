@@ -10,8 +10,8 @@ async function fetchDashboardStats() {
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-  const [templatesRes, categoriesRes, itemsRes, recentItemsRes] = await Promise.all([
-    supabase.from("templates").select("id", { count: "exact", head: true }),
+  const [blueprintsRes, categoriesRes, itemsRes, recentItemsRes] = await Promise.all([
+    supabase.from("blueprints").select("id", { count: "exact", head: true }),
     supabase.from("categories").select("id", { count: "exact", head: true }),
     supabase.from("items").select("id", { count: "exact", head: true }),
     supabase
@@ -21,7 +21,7 @@ async function fetchDashboardStats() {
   ]);
 
   return {
-    templates: templatesRes.count ?? 0,
+    blueprints: blueprintsRes.count ?? 0,
     categories: categoriesRes.count ?? 0,
     items: itemsRes.count ?? 0,
     recentItems: recentItemsRes.count ?? 0,
@@ -33,9 +33,9 @@ export default async function DashboardPage() {
 
   const cards = [
     {
-      title: "Total Templates",
-      value: stats.templates,
-      subtitle: "Schema definitions",
+      title: "Blueprints",
+      value: stats.blueprints,
+      subtitle: "Starter presets",
       icon: Layers,
     },
     {

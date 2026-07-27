@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 
 const navItems = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Templates", href: "/templates", icon: Layers },
+  { name: "Blueprints", href: "/blueprints", icon: Layers },
   { name: "Categories", href: "/categories", icon: FolderTree },
   { name: "Catalog", href: "/catalog", icon: Database },
   { name: "Settings", href: "/settings", icon: Settings },

@@ -20,9 +20,9 @@ export default function Home() {
         </h1>
 
         <p className="max-w-lg text-base text-muted-foreground leading-relaxed">
-          A metadata-driven dynamic catalog. Define templates, organize
-          hierarchical categories, and populate items with auto-generated forms
-          — all powered by JSONB.
+          A schema management system for catalog data. Define fields on a
+          category, inherit them down the tree, and change your data model
+          against live records — all powered by JSONB.
         </p>
 
         <div className="flex items-center gap-3 mt-4">
@@ -46,13 +46,13 @@ export default function Home() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 max-w-3xl w-full">
         <FeatureCard
           icon={<Layers className="h-5 w-5 text-primary" />}
-          title="Dynamic Templates"
-          description="Define custom field schemas with string, number, boolean, date, and select types."
+          title="Composable Schema"
+          description="Define fields on any category with string, number, boolean, date, select and more."
         />
         <FeatureCard
           icon={<FolderTree className="h-5 w-5 text-primary" />}
           title="Category Hierarchy"
-          description="Organize items in nested parent-child category trees linked to templates."
+          description="Child categories inherit their parent's fields and add their own on top."
         />
         <FeatureCard
           icon={<Database className="h-5 w-5 text-primary" />}

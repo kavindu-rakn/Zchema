@@ -200,9 +200,10 @@ $$;
 -- ------------------------------------------------------------
 -- One call returning the whole tree with counts, so the UI never
 -- N+1s. Returned FLAT; nesting is assembled client-side.
--- Each node: id, name, slug, parent_id, icon, color, position,
---   own_field_count, inherited_field_count, item_count,
---   subtree_item_count.
+-- Each node carries the full category row PLUS the four counts, so the
+-- payload satisfies the canonical CategoryNode type in src/lib/types.ts
+-- without any partial-object casting, and Phase 3's schema editor gets
+-- own_fields/overrides from the same single call.
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.get_category_tree()
 RETURNS JSONB
@@ -217,10 +218,16 @@ AS $$
         'id',                    c.id,
         'name',                  c.name,
         'slug',                  c.slug,
+        'description',           c.description,
         'parent_id',             c.parent_id,
+        'blueprint_id',          c.blueprint_id,
+        'own_fields',            c.own_fields,
+        'overrides',             c.overrides,
         'icon',                  c.icon,
         'color',                 c.color,
         'position',              c.position,
+        'created_at',            c.created_at,
+        'updated_at',            c.updated_at,
         'own_field_count',       jsonb_array_length(COALESCE(c.own_fields, '[]'::jsonb)),
         'inherited_field_count', (
           SELECT count(*)::int

@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Bug } from "lucide-react";
 
-const ROLES = ["TEMPLATE_ADMIN", "DATA_CONTRIBUTOR", "VIEWER"];
+const ROLES = ["SCHEMA_ADMIN", "DATA_EDITOR", "VIEWER"];
 
 export function RoleSwitcher({ user, profile }: { user: any; profile: any }) {
   const router = useRouter();

@@ -1,18 +1,44 @@
 // ── TypeScript types for SchemaShift ─────────────────────────
+// Canonical shapes for the category-owned schema model (Phase 1).
+// Every later phase depends on these exact names — do not rename them.
 
-/** User roles matching the CHECK constraint in profiles table */
-export type UserRole = "TEMPLATE_ADMIN" | "DATA_CONTRIBUTOR" | "VIEWER";
+export type UserRole = "SCHEMA_ADMIN" | "DATA_EDITOR" | "VIEWER";
 
-/** Field types supported by the template builder */
-export type FieldType = "string" | "number" | "boolean" | "date" | "select";
+export type FieldType =
+  | "string" | "text" | "number" | "boolean"
+  | "date" | "select" | "multiselect" | "url";
 
-/** A single field definition within a template's `fields` JSONB array */
-export interface TemplateField {
-  key: string;
+/** A field as authored on a category (or inside a blueprint). */
+export interface SchemaField {
+  key: string;                 // snake_case, unique across the effective chain
   label: string;
   type: FieldType;
   required: boolean;
-  options?: string[]; // Only used when type === "select"
+  options?: string[];          // select | multiselect
+  default?: unknown;
+  help_text?: string;
+  unit?: string;               // e.g. "kg", "GB" — display only
+  position: number;            // ordering within its own level
+  attribute_id?: string | null; // set when pulled from the attribute library (Phase 6)
+}
+
+/** Patch a descendant applies to an inherited field. Type & key are NOT patchable. */
+export interface FieldOverride {
+  label?: string;
+  required?: boolean;
+  options?: string[];
+  default?: unknown;
+  help_text?: string;
+  position?: number;
+}
+
+/** A field after resolution, as returned by get_effective_schema(). */
+export interface EffectiveField extends SchemaField {
+  source_category_id: string;
+  source_category_name: string;
+  depth: number;               // 0 = defined on the target category itself
+  inherited: boolean;          // depth > 0
+  overridden_by: string[];     // category ids that patched it, root→leaf order
 }
 
 /** profiles table row */
@@ -23,39 +49,81 @@ export interface Profile {
   created_at: string;
 }
 
-/** templates table row */
-export interface Template {
-  id: string;
-  name: string;
-  description: string | null;
-  fields: TemplateField[];
-  created_at: string;
-}
-
-/** categories table row */
 export interface Category {
   id: string;
   name: string;
+  slug: string;
+  description: string | null;
   parent_id: string | null;
-  template_id: string;
+  blueprint_id: string | null;
+  own_fields: SchemaField[];
+  overrides: Record<string, FieldOverride>;  // keyed by inherited field key
+  icon: string | null;
+  color: string | null;
+  position: number;
   created_at: string;
+  updated_at: string;
 }
 
-/** categories with nested children (for tree rendering) */
 export interface CategoryNode extends Category {
   children: CategoryNode[];
-  template?: Template;
+  item_count: number;          // items directly on this node
+  subtree_item_count: number;  // items on this node + all descendants
+  own_field_count: number;
+  inherited_field_count: number;
 }
 
-/** items table row */
+export interface Blueprint {
+  id: string;
+  name: string;
+  description: string | null;
+  fields: SchemaField[];
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Item {
   id: string;
   category_id: string;
-  data: Record<string, unknown>;
+  data: Record<string, unknown>;   // may contain a `__orphaned` sub-object
+  schema_version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SchemaVersion {
+  id: string;
+  category_id: string;
+  version: number;
+  snapshot: EffectiveField[];
+  change_summary: SchemaChange[];
+  changed_by: string | null;
   created_at: string;
 }
 
-/** items joined with its category (for display) */
-export interface ItemWithCategory extends Item {
-  category?: Category;
+export type ChangeKind =
+  | "add_field" | "remove_field" | "retype_field"
+  | "require_field" | "unrequire_field"
+  | "rename_label" | "change_options" | "add_override" | "remove_override";
+
+export type ChangeSeverity = "safe" | "warning" | "destructive";
+
+export interface SchemaChange {
+  kind: ChangeKind;
+  field_key: string;
+  severity: ChangeSeverity;
+  from?: unknown;
+  to?: unknown;
+  affected_item_count: number;
+  lossy_item_count?: number;      // values that will not survive a type cast
+  sample_values?: unknown[];      // up to 5, for the impact dialog in Phase 5
 }
+
+/**
+ * Uniform server-action return shape. Actions resolve rather than throw
+ * so the caller can surface `error` in a toast; the message is always
+ * safe to show a user.
+ */
+export type ActionResult<T = null> =
+  | { ok: true; data: T }
+  | { ok: false; error: string };

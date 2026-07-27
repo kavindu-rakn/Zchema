@@ -1,124 +1,98 @@
 "use server";
 
-import { createClient } from "@/utils/supabase/server";
+// ── Item server actions ──────────────────────────────────────
+// Items are validated against the category's EFFECTIVE schema
+// (inherited + own + overrides), not against a single template.
+//
+// Reads live in src/lib/data/items.ts — a 'use server' module may only
+// export async functions, and queries do not need to be actions.
+
 import { revalidatePath } from "next/cache";
-import { Category, Item, Template } from "@/lib/types";
+import { createClient } from "@/utils/supabase/server";
+import { requireDataEditor } from "@/lib/auth";
+import { actionError } from "@/lib/action-result";
+import { getEffectiveSchema } from "@/lib/data/categories";
+import type { ActionResult, EffectiveField } from "@/lib/types";
 
-export async function fetchCategoryWithTemplate(categoryId: string) {
-  const supabase = await createClient();
-
-  // Fetch category
-  const { data: category, error: categoryError } = await supabase
-    .from("categories")
-    .select("*, template:templates(*)")
-    .eq("id", categoryId)
-    .single();
-
-  if (categoryError) throw new Error(categoryError.message);
-  
-  return {
-    category: category as Category,
-    template: category.template as Template,
-  };
-}
-
-export async function fetchItems(categoryId: string) {
-  const supabase = await createClient();
-
-  const { data: items, error } = await supabase
-    .from("items")
-    .select("*")
-    .eq("category_id", categoryId)
-    .order("created_at", { ascending: false });
-
-  if (error) throw new Error(error.message);
-
-  return items as Item[];
-}
-
-export async function createItem(categoryId: string, data: Record<string, any>) {
-  const supabase = await createClient();
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
-
-  // Fetch template fields for validation
-  const { data: category, error: catError } = await supabase
-    .from("categories")
-    .select("template:templates(fields)")
-    .eq("id", categoryId)
-    .single();
-
-  if (catError) throw new Error(catError.message);
-  
-  const templateData = category.template as any;
-  const fields = Array.isArray(templateData) ? templateData[0]?.fields : templateData?.fields;
-  
-  if (fields && Array.isArray(fields)) {
-    for (const field of fields) {
-      if (field.required && (data[field.key] === undefined || data[field.key] === null || data[field.key] === "")) {
-        throw new Error(`Missing required field: ${field.label}`);
-      }
-    }
+/** Reject blank values for fields the effective schema marks required. */
+function findMissingRequired(
+  schema: EffectiveField[],
+  data: Record<string, unknown>
+): string | null {
+  for (const field of schema) {
+    if (!field.required) continue;
+    const value = data[field.key];
+    const isBlank =
+      value === undefined ||
+      value === null ||
+      value === "" ||
+      (Array.isArray(value) && value.length === 0);
+    if (isBlank) return `"${field.label}" is required.`;
   }
-
-  const { error } = await supabase
-    .from("items")
-    .insert([{ category_id: categoryId, data }]);
-
-  if (error) throw new Error(error.message);
-
-  revalidatePath(`/catalog/${categoryId}`);
+  return null;
 }
 
-export async function updateItem(id: string, categoryId: string, data: Record<string, any>) {
-  const supabase = await createClient();
+export async function createItem(
+  categoryId: string,
+  data: Record<string, unknown>
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    await requireDataEditor();
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
+    const schema = await getEffectiveSchema(categoryId);
+    const missing = findMissingRequired(schema, data);
+    if (missing) return { ok: false, error: missing };
 
-  // Fetch template fields for validation
-  const { data: category, error: catError } = await supabase
-    .from("categories")
-    .select("template:templates(fields)")
-    .eq("id", categoryId)
-    .single();
+    const supabase = await createClient();
+    const { data: created, error } = await supabase
+      .from("items")
+      .insert({ category_id: categoryId, data })
+      .select("id")
+      .single();
 
-  if (catError) throw new Error(catError.message);
-  
-  const templateData = category.template as any;
-  const fields = Array.isArray(templateData) ? templateData[0]?.fields : templateData?.fields;
-  
-  if (fields && Array.isArray(fields)) {
-    for (const field of fields) {
-      if (field.required && (data[field.key] === undefined || data[field.key] === null || data[field.key] === "")) {
-        throw new Error(`Missing required field: ${field.label}`);
-      }
-    }
+    if (error) throw new Error(error.message);
+
+    revalidatePath(`/catalog/${categoryId}`);
+    return { ok: true, data: { id: created.id as string } };
+  } catch (error) {
+    return actionError(error, "Could not create the item.");
   }
-
-  const { error } = await supabase
-    .from("items")
-    .update({ data })
-    .eq("id", id);
-
-  if (error) throw new Error(error.message);
-
-  revalidatePath(`/catalog/${categoryId}`);
 }
 
-export async function deleteItem(id: string, categoryId: string) {
-  const supabase = await createClient();
+export async function updateItem(
+  id: string,
+  categoryId: string,
+  data: Record<string, unknown>
+): Promise<ActionResult> {
+  try {
+    await requireDataEditor();
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
+    const schema = await getEffectiveSchema(categoryId);
+    const missing = findMissingRequired(schema, data);
+    if (missing) return { ok: false, error: missing };
 
-  const { error } = await supabase
-    .from("items")
-    .delete()
-    .eq("id", id);
+    const supabase = await createClient();
+    const { error } = await supabase.from("items").update({ data }).eq("id", id);
+    if (error) throw new Error(error.message);
 
-  if (error) throw new Error(error.message);
+    revalidatePath(`/catalog/${categoryId}`);
+    return { ok: true, data: null };
+  } catch (error) {
+    return actionError(error, "Could not update the item.");
+  }
+}
 
-  revalidatePath(`/catalog/${categoryId}`);
+export async function deleteItem(id: string, categoryId: string): Promise<ActionResult> {
+  try {
+    await requireDataEditor();
+
+    const supabase = await createClient();
+    const { error } = await supabase.from("items").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+
+    revalidatePath(`/catalog/${categoryId}`);
+    return { ok: true, data: null };
+  } catch (error) {
+    return actionError(error, "Could not delete the item.");
+  }
 }
