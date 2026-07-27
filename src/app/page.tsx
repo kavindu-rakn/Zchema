@@ -8,7 +8,7 @@ export default function Home() {
       <div className="flex flex-col items-center gap-4 text-center max-w-2xl">
         <div className="flex items-center gap-2 rounded-full border border-border/60 bg-secondary/50 px-4 py-1.5 text-xs font-medium text-muted-foreground">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-          SLT Dynamic Catalog Engine
+          Dynamic Catalog Engine
         </div>
 
         <h1 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">

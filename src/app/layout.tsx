@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SLT | SchemaShift",
+  title: "SchemaShift",
   description:
     "A metadata-driven dynamic catalog engine. Define templates, organize categories, and populate items with dynamically generated forms.",
 };

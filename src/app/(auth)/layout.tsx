@@ -26,7 +26,7 @@ export default function AuthLayout({
               <line x1="12" y1="22.08" x2="12" y2="12" />
             </svg>
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight">SLT | SchemaShift</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">SchemaShift</h1>
           <p className="text-sm text-zinc-400 mt-2">Dynamic Catalog Management System</p>
         </div>
         {children}

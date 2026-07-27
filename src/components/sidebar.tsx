@@ -20,7 +20,7 @@ export function Sidebar({ user, profile }: { user: any; profile: any }) {
   return (
     <aside className="w-60 flex-shrink-0 bg-sidebar border-r border-sidebar-border flex flex-col h-screen transition-all duration-300">
       <div className="h-14 flex items-center px-6 border-b border-sidebar-border">
-        <span className="font-bold text-lg tracking-tight text-sidebar-foreground">SLT | SchemaShift</span>
+        <span className="font-bold text-lg tracking-tight text-sidebar-foreground">SchemaShift</span>
       </div>
 
       <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
