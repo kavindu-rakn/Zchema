@@ -58,9 +58,9 @@ export function CommandPalette() {
               <LayoutDashboard className="mr-2 h-4 w-4" />
               Dashboard
             </CommandItem>
-            <CommandItem onSelect={() => runCommand(() => router.push("/templates"))}>
+            <CommandItem onSelect={() => runCommand(() => router.push("/blueprints"))}>
               <Layers className="mr-2 h-4 w-4" />
-              Templates
+              Blueprints
             </CommandItem>
             <CommandItem onSelect={() => runCommand(() => router.push("/categories"))}>
               <FolderTree className="mr-2 h-4 w-4" />
@@ -73,9 +73,9 @@ export function CommandPalette() {
           </CommandGroup>
           <CommandSeparator />
           <CommandGroup heading="Actions">
-            <CommandItem onSelect={() => runCommand(() => router.push("/templates/new"))}>
+            <CommandItem onSelect={() => runCommand(() => router.push("/blueprints/new"))}>
               <PlusCircle className="mr-2 h-4 w-4" />
-              Create Template
+              Create Blueprint
             </CommandItem>
             <CommandItem onSelect={() => runCommand(() => router.push("/categories/new"))}>
               <PlusCircle className="mr-2 h-4 w-4" />

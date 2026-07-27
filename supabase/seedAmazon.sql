@@ -1,156 +1,296 @@
--- ==========================================
--- SchemaShift Amazon-like Seed File
--- ==========================================
+-- ============================================================
+-- SchemaShift — Amazon-style seed (multi-level inheritance demo)
+-- Run AFTER schema.sql → functions.sql → triggers.sql → policies.sql
+--
+-- ⚠️  DESTRUCTIVE: the TRUNCATE below deletes ALL blueprints,
+-- categories, items and schema versions. Profiles/auth users are
+-- untouched. Re-running is safe and idempotent.
+--
+-- THE POINT OF THIS FILE
+-- `Gaming Laptops` sits three levels deep AND carries an override.
+-- It inherits 3 fields from Electronics and 4 from Laptops, adds 2 of
+-- its own — 9 effective fields — while its sibling Smartphones cannot
+-- see a single laptop field. That is the whole model in one screenshot.
+--
+--   Electronics                own: brand, model_number, warranty_months
+--   ├── Laptops                own: screen_size_in, ram_gb, cpu, gpu      → 20 items
+--   │   └── Gaming Laptops     own: refresh_rate_hz, has_rgb              →  8 items
+--   │       override: warranty_months → label "Warranty (months)", required
+--   └── Smartphones            own: battery_mah, storage_gb, has_5g       → 20 items
+--   Clothing, Shoes & Jewelry  own: brand, material, care_instructions
+--   ├── Mens Clothing          own: size (select), fit                    → 15 items
+--   └── Womens Clothing        own: size (select), fit, is_maternity      → 15 items
+--   Books                      own: author, isbn, page_count, language
+--   ├── Fiction                own: genre (select), is_series             → 15 items
+--   └── Non-Fiction            own: subject, has_index                    → 15 items
+--   Home & Kitchen             own: brand, material, dimensions_cm
+--   ├── Furniture              own: assembly_required, weight_kg          → 10 items
+--   └── Kitchen Appliances     own: wattage, is_dishwasher_safe           → 10 items
+-- ============================================================
 
--- Clear existing data (optional, uncomment if needed)
--- DELETE FROM public.items;
--- DELETE FROM public.categories;
--- DELETE FROM public.templates;
+TRUNCATE public.items, public.schema_versions, public.categories, public.blueprints CASCADE;
 
--- 1. Templates
-INSERT INTO public.templates (id, name, description, fields)
-VALUES
-    ('c8035a2c-fb29-4a5a-bf52-7da280c0594a', 'Electronics Template', 'Standard fields for electronic devices', '[{"key": "brand", "label": "Brand", "type": "string", "required": true}, {"key": "model", "label": "Model", "type": "string", "required": true}, {"key": "price", "label": "Price ($)", "type": "number", "required": true}, {"key": "warranty_years", "label": "Warranty (Years)", "type": "number", "required": false}]'::jsonb),
-    ('a7b27aee-3a95-4053-a599-ea27c93a76b8', 'Clothing Template', 'Standard fields for apparel', '[{"key": "brand", "label": "Brand", "type": "string", "required": true}, {"key": "size", "label": "Size", "type": "string", "required": true}, {"key": "color", "label": "Color", "type": "string", "required": true}, {"key": "material", "label": "Material", "type": "string", "required": false}, {"key": "price", "label": "Price ($)", "type": "number", "required": true}]'::jsonb),
-    ('e59d899d-837c-4c9e-901e-1ee835008d7e', 'Books Template', 'Standard fields for books', '[{"key": "author", "label": "Author", "type": "string", "required": true}, {"key": "isbn", "label": "ISBN", "type": "string", "required": true}, {"key": "pages", "label": "Page Count", "type": "number", "required": false}, {"key": "publisher", "label": "Publisher", "type": "string", "required": false}, {"key": "price", "label": "Price ($)", "type": "number", "required": true}]'::jsonb),
-    ('2f7c9405-9418-4c7a-8741-0a9772b6f265', 'Home & Kitchen Template', 'Standard fields for home goods', '[{"key": "brand", "label": "Brand", "type": "string", "required": true}, {"key": "material", "label": "Material", "type": "string", "required": false}, {"key": "weight_kg", "label": "Weight (kg)", "type": "number", "required": false}, {"key": "price", "label": "Price ($)", "type": "number", "required": true}]'::jsonb);
 
--- 2. Categories
-INSERT INTO public.categories (id, name, parent_id, template_id)
-VALUES
-    ('8bbde974-86dc-4351-bb46-5028ef7d280e', 'Electronics', NULL, 'c8035a2c-fb29-4a5a-bf52-7da280c0594a'),
-    ('f696ac42-7100-4525-8394-640a399408f2', 'Clothing, Shoes & Jewelry', NULL, 'a7b27aee-3a95-4053-a599-ea27c93a76b8'),
-    ('0dbd4da3-a72c-4d14-90f6-99545964e745', 'Books', NULL, 'e59d899d-837c-4c9e-901e-1ee835008d7e'),
-    ('7aca56f3-9a58-4a1a-9555-9912c63621d1', 'Home & Kitchen', NULL, '2f7c9405-9418-4c7a-8741-0a9772b6f265'),
-    ('63e8585d-8bf3-4f59-baa9-c326ac414a4b', 'Laptops', '8bbde974-86dc-4351-bb46-5028ef7d280e', 'c8035a2c-fb29-4a5a-bf52-7da280c0594a'),
-    ('9a9d275c-d2c5-41a8-a034-82175715971b', 'Smartphones', '8bbde974-86dc-4351-bb46-5028ef7d280e', 'c8035a2c-fb29-4a5a-bf52-7da280c0594a'),
-    ('bdd909d3-9b94-473f-aeba-718fc020c942', 'Mens Clothing', 'f696ac42-7100-4525-8394-640a399408f2', 'a7b27aee-3a95-4053-a599-ea27c93a76b8'),
-    ('657f2139-52a5-40d2-b56d-860ec580ed76', 'Womens Clothing', 'f696ac42-7100-4525-8394-640a399408f2', 'a7b27aee-3a95-4053-a599-ea27c93a76b8'),
-    ('758e95cc-ae5f-4e3f-a535-659552858b6d', 'Fiction', '0dbd4da3-a72c-4d14-90f6-99545964e745', 'e59d899d-837c-4c9e-901e-1ee835008d7e'),
-    ('1556a497-01a3-48e3-9286-9e2c2d914b85', 'Non-Fiction', '0dbd4da3-a72c-4d14-90f6-99545964e745', 'e59d899d-837c-4c9e-901e-1ee835008d7e'),
-    ('4b16d411-889b-4480-a106-276bde3f7d86', 'Furniture', '7aca56f3-9a58-4a1a-9555-9912c63621d1', '2f7c9405-9418-4c7a-8741-0a9772b6f265'),
-    ('b213c7c5-b522-48e4-a4b6-470002cd3f15', 'Kitchen Appliances', '7aca56f3-9a58-4a1a-9555-9912c63621d1', '2f7c9405-9418-4c7a-8741-0a9772b6f265');
+-- ============================================================
+-- 1. Blueprints — presets ONLY
+-- ------------------------------------------------------------
+-- Deliberately NOT linked to any category. Blueprints are optional
+-- accelerators now: applying one COPIES its fields into a category's
+-- own_fields, leaving no live link behind.
+-- ============================================================
+INSERT INTO public.blueprints (id, name, description, fields) VALUES
+('b1000000-0000-0000-0000-000000000001', 'Basic Product',
+ 'Minimal commerce fields — a starting point for any sellable item.',
+ '[{"key":"sku","label":"SKU","type":"string","required":true,"position":0},
+   {"key":"price_usd","label":"Price","type":"number","required":true,"unit":"USD","position":1},
+   {"key":"in_stock","label":"In Stock","type":"boolean","required":false,"position":2}]'::jsonb),
 
+('b1000000-0000-0000-0000-000000000002', 'Media Item',
+ 'Fields common to books, film and music.',
+ '[{"key":"title","label":"Title","type":"string","required":true,"position":0},
+   {"key":"creator","label":"Creator","type":"string","required":false,"position":1},
+   {"key":"release_date","label":"Release Date","type":"date","required":false,"position":2},
+   {"key":"runtime_min","label":"Runtime","type":"number","required":false,"unit":"min","position":3}]'::jsonb),
+
+('b1000000-0000-0000-0000-000000000003', 'Physical Goods',
+ 'Shipping and handling attributes.',
+ '[{"key":"weight_kg","label":"Weight","type":"number","required":false,"unit":"kg","position":0},
+   {"key":"dimensions_cm","label":"Dimensions","type":"string","required":false,"unit":"cm","position":1},
+   {"key":"is_fragile","label":"Fragile","type":"boolean","required":false,"position":2}]'::jsonb);
+
+
+-- ============================================================
+-- 2. Categories — schema lives on the node
+-- ============================================================
+
+-- ── Electronics ─────────────────────────────────────────────
+INSERT INTO public.categories (id, name, slug, description, parent_id, own_fields, icon, color, position) VALUES
+('e0000000-0000-0000-0000-000000000001', 'Electronics', 'electronics',
+ 'Consumer electronics and computing hardware.', NULL,
+ '[{"key":"brand","label":"Brand","type":"string","required":true,"position":0},
+   {"key":"model_number","label":"Model Number","type":"string","required":false,"position":1},
+   {"key":"warranty_months","label":"Warranty","type":"number","required":false,"unit":"months","position":2}]'::jsonb,
+ 'cpu', '#38bdf8', 0);
+
+INSERT INTO public.categories (id, name, slug, description, parent_id, own_fields, icon, color, position) VALUES
+('e0000000-0000-0000-0000-000000000002', 'Laptops', 'laptops',
+ 'Portable computers.', 'e0000000-0000-0000-0000-000000000001',
+ '[{"key":"screen_size_in","label":"Screen Size","type":"number","required":false,"unit":"in","position":0},
+   {"key":"ram_gb","label":"RAM","type":"number","required":false,"unit":"GB","position":1},
+   {"key":"cpu","label":"CPU","type":"string","required":false,"position":2},
+   {"key":"gpu","label":"GPU","type":"string","required":false,"position":3}]'::jsonb,
+ 'laptop', '#60a5fa', 0),
+
+('e0000000-0000-0000-0000-000000000004', 'Smartphones', 'smartphones',
+ 'Mobile phones — cannot see a single Laptops field.', 'e0000000-0000-0000-0000-000000000001',
+ '[{"key":"battery_mah","label":"Battery","type":"number","required":false,"unit":"mAh","position":0},
+   {"key":"storage_gb","label":"Storage","type":"number","required":false,"unit":"GB","position":1},
+   {"key":"has_5g","label":"5G","type":"boolean","required":false,"position":2}]'::jsonb,
+ 'smartphone', '#818cf8', 1);
+
+-- Three levels deep AND overriding an inherited field: the money node.
+INSERT INTO public.categories (id, name, slug, description, parent_id, own_fields, overrides, icon, color, position) VALUES
+('e0000000-0000-0000-0000-000000000003', 'Gaming Laptops', 'gaming-laptops',
+ 'High-refresh machines. Inherits 3 fields from Electronics + 4 from Laptops, adds 2, and tightens the inherited warranty field.',
+ 'e0000000-0000-0000-0000-000000000002',
+ '[{"key":"refresh_rate_hz","label":"Refresh Rate","type":"number","required":false,"unit":"Hz","position":0},
+   {"key":"has_rgb","label":"RGB Lighting","type":"boolean","required":false,"position":1}]'::jsonb,
+ '{"warranty_months":{"label":"Warranty (months)","required":true}}'::jsonb,
+ 'gamepad-2', '#a78bfa', 0);
+
+-- ── Clothing, Shoes & Jewelry ───────────────────────────────
+INSERT INTO public.categories (id, name, slug, description, parent_id, own_fields, icon, color, position) VALUES
+('c0000000-0000-0000-0000-000000000001', 'Clothing, Shoes & Jewelry', 'clothing-shoes-jewelry',
+ 'Apparel and accessories.', NULL,
+ '[{"key":"brand","label":"Brand","type":"string","required":true,"position":0},
+   {"key":"material","label":"Material","type":"string","required":false,"position":1},
+   {"key":"care_instructions","label":"Care Instructions","type":"text","required":false,"position":2}]'::jsonb,
+ 'shirt', '#f472b6', 1);
+
+INSERT INTO public.categories (id, name, slug, description, parent_id, own_fields, icon, color, position) VALUES
+('c0000000-0000-0000-0000-000000000002', 'Mens Clothing', 'mens-clothing',
+ 'Menswear.', 'c0000000-0000-0000-0000-000000000001',
+ '[{"key":"size","label":"Size","type":"select","required":true,"options":["XS","S","M","L","XL","XXL"],"position":0},
+   {"key":"fit","label":"Fit","type":"string","required":false,"position":1}]'::jsonb,
+ 'shirt', '#fb7185', 0),
+
+('c0000000-0000-0000-0000-000000000003', 'Womens Clothing', 'womens-clothing',
+ 'Womenswear — defines its own `size`, which siblings may legitimately reuse.', 'c0000000-0000-0000-0000-000000000001',
+ '[{"key":"size","label":"Size","type":"select","required":true,"options":["XS","S","M","L","XL","XXL"],"position":0},
+   {"key":"fit","label":"Fit","type":"string","required":false,"position":1},
+   {"key":"is_maternity","label":"Maternity","type":"boolean","required":false,"position":2}]'::jsonb,
+ 'shirt', '#f9a8d4', 1);
+
+-- ── Books ───────────────────────────────────────────────────
+INSERT INTO public.categories (id, name, slug, description, parent_id, own_fields, icon, color, position) VALUES
+('40000000-0000-0000-0000-000000000001', 'Books', 'books',
+ 'Printed and digital books.', NULL,
+ '[{"key":"author","label":"Author","type":"string","required":true,"position":0},
+   {"key":"isbn","label":"ISBN","type":"string","required":false,"position":1},
+   {"key":"page_count","label":"Pages","type":"number","required":false,"position":2},
+   {"key":"language","label":"Language","type":"string","required":false,"position":3}]'::jsonb,
+ 'book-open', '#fbbf24', 2);
+
+INSERT INTO public.categories (id, name, slug, description, parent_id, own_fields, icon, color, position) VALUES
+('40000000-0000-0000-0000-000000000002', 'Fiction', 'fiction',
+ 'Novels and short stories.', '40000000-0000-0000-0000-000000000001',
+ '[{"key":"genre","label":"Genre","type":"select","required":false,"options":["Fantasy","Science Fiction","Mystery","Romance","Thriller","Literary"],"position":0},
+   {"key":"is_series","label":"Part of a Series","type":"boolean","required":false,"position":1}]'::jsonb,
+ 'book', '#fcd34d', 0),
+
+('40000000-0000-0000-0000-000000000003', 'Non-Fiction', 'non-fiction',
+ 'Reference and factual works.', '40000000-0000-0000-0000-000000000001',
+ '[{"key":"subject","label":"Subject","type":"string","required":false,"position":0},
+   {"key":"has_index","label":"Has Index","type":"boolean","required":false,"position":1}]'::jsonb,
+ 'graduation-cap', '#fde68a', 1);
+
+-- ── Home & Kitchen ──────────────────────────────────────────
+INSERT INTO public.categories (id, name, slug, description, parent_id, own_fields, icon, color, position) VALUES
+('40000000-0000-0000-0000-000000000011', 'Home & Kitchen', 'home-kitchen',
+ 'Furnishings and household appliances.', NULL,
+ '[{"key":"brand","label":"Brand","type":"string","required":true,"position":0},
+   {"key":"material","label":"Material","type":"string","required":false,"position":1},
+   {"key":"dimensions_cm","label":"Dimensions","type":"string","required":false,"unit":"cm","position":2}]'::jsonb,
+ 'house', '#34d399', 3);
+
+INSERT INTO public.categories (id, name, slug, description, parent_id, own_fields, icon, color, position) VALUES
+('40000000-0000-0000-0000-000000000012', 'Furniture', 'furniture',
+ 'Tables, chairs and storage.', '40000000-0000-0000-0000-000000000011',
+ '[{"key":"assembly_required","label":"Assembly Required","type":"boolean","required":false,"position":0},
+   {"key":"weight_kg","label":"Weight","type":"number","required":false,"unit":"kg","position":1}]'::jsonb,
+ 'sofa', '#6ee7b7', 0),
+
+('40000000-0000-0000-0000-000000000013', 'Kitchen Appliances', 'kitchen-appliances',
+ 'Small and large kitchen electricals.', '40000000-0000-0000-0000-000000000011',
+ '[{"key":"wattage","label":"Wattage","type":"number","required":false,"unit":"W","position":0},
+   {"key":"is_dishwasher_safe","label":"Dishwasher Safe","type":"boolean","required":false,"position":1}]'::jsonb,
+ 'cooking-pot', '#a7f3d0', 1);
+
+
+-- ============================================================
 -- 3. Items
-INSERT INTO public.items (id, category_id, data)
-VALUES
-    ('8c510e31-e976-413e-881c-fede606d5114', '63e8585d-8bf3-4f59-baa9-c326ac414a4b', '{"brand": "Apple", "model": "ProBook 3800", "price": 1273.75, "warranty_years": 2}'::jsonb),
-    ('32755093-99b6-4c90-9e7c-fd81156aa71b', '63e8585d-8bf3-4f59-baa9-c326ac414a4b', '{"brand": "Dell", "model": "ProBook 6093", "price": 717.68, "warranty_years": 1}'::jsonb),
-    ('a8492cbe-0e11-45a9-9d12-83c842ce6cb3', '63e8585d-8bf3-4f59-baa9-c326ac414a4b', '{"brand": "HP", "model": "ProBook 4037", "price": 685.09, "warranty_years": 3}'::jsonb),
-    ('d88dd1b6-88e5-4897-a180-c1d2ac1c308e', '63e8585d-8bf3-4f59-baa9-c326ac414a4b', '{"brand": "Asus", "model": "ProBook 2203", "price": 528.76, "warranty_years": 2}'::jsonb),
-    ('ce8efe52-2cb2-48b5-afd8-66443b74e800', '63e8585d-8bf3-4f59-baa9-c326ac414a4b', '{"brand": "Lenovo", "model": "ProBook 7184", "price": 306.21, "warranty_years": 2}'::jsonb),
-    ('f5d64ffc-91c8-46fa-a3a6-0365c7a8f7ce', '63e8585d-8bf3-4f59-baa9-c326ac414a4b', '{"brand": "HP", "model": "ProBook 8429", "price": 499.71, "warranty_years": 1}'::jsonb),
-    ('5f17c4a3-1223-4b50-b1cf-06a324dd032d', '63e8585d-8bf3-4f59-baa9-c326ac414a4b', '{"brand": "Apple", "model": "ProBook 8796", "price": 1048.7, "warranty_years": 2}'::jsonb),
-    ('19ad3d33-af53-44ba-82ea-53a06005fe22', '63e8585d-8bf3-4f59-baa9-c326ac414a4b', '{"brand": "Dell", "model": "ProBook 2525", "price": 645.4, "warranty_years": 3}'::jsonb),
-    ('179387a7-b44b-41e5-9b3e-4789476dd124', '63e8585d-8bf3-4f59-baa9-c326ac414a4b', '{"brand": "Asus", "model": "ProBook 3664", "price": 1474.24, "warranty_years": 3}'::jsonb),
-    ('954af7a5-8396-4dfa-9672-ff33b8bafb7c', '63e8585d-8bf3-4f59-baa9-c326ac414a4b', '{"brand": "Lenovo", "model": "ProBook 1949", "price": 891.55, "warranty_years": 2}'::jsonb),
-    ('84a5dc3a-bffc-4a88-90c1-8607b05a22ad', '63e8585d-8bf3-4f59-baa9-c326ac414a4b', '{"brand": "HP", "model": "ProBook 3095", "price": 454.83, "warranty_years": 1}'::jsonb),
-    ('718aef96-7728-4e45-bafd-4c6328ad87f5', '63e8585d-8bf3-4f59-baa9-c326ac414a4b', '{"brand": "Asus", "model": "ProBook 7077", "price": 311.42, "warranty_years": 2}'::jsonb),
-    ('ba52343c-3985-4e0b-92d1-4904bb9c6160', '63e8585d-8bf3-4f59-baa9-c326ac414a4b', '{"brand": "Asus", "model": "ProBook 4487", "price": 304.21, "warranty_years": 1}'::jsonb),
-    ('534ac5d8-fae2-4aa7-b30d-5821f85315e3', '63e8585d-8bf3-4f59-baa9-c326ac414a4b', '{"brand": "Asus", "model": "ProBook 4098", "price": 698.8, "warranty_years": 1}'::jsonb),
-    ('24e81a18-7aa6-4710-9558-563a457b9c2d', '63e8585d-8bf3-4f59-baa9-c326ac414a4b', '{"brand": "Dell", "model": "ProBook 5789", "price": 2279.48, "warranty_years": 1}'::jsonb),
-    ('a4868fef-3f3a-4de2-9963-61af9038df54', '63e8585d-8bf3-4f59-baa9-c326ac414a4b', '{"brand": "HP", "model": "ProBook 4432", "price": 1218.68, "warranty_years": 2}'::jsonb),
-    ('0ab436af-688c-47be-a383-485b146accfa', '63e8585d-8bf3-4f59-baa9-c326ac414a4b', '{"brand": "Dell", "model": "ProBook 2273", "price": 807.01, "warranty_years": 1}'::jsonb),
-    ('332a2280-60e0-4910-8375-0ee5d2ac3d98', '63e8585d-8bf3-4f59-baa9-c326ac414a4b', '{"brand": "Asus", "model": "ProBook 8045", "price": 1301.72, "warranty_years": 1}'::jsonb),
-    ('6e03b057-04c8-42e1-8160-31bb1945b759', '63e8585d-8bf3-4f59-baa9-c326ac414a4b', '{"brand": "Lenovo", "model": "ProBook 1864", "price": 397.43, "warranty_years": 1}'::jsonb),
-    ('41cb839c-47d0-417e-8bde-36c1c3389065', '63e8585d-8bf3-4f59-baa9-c326ac414a4b', '{"brand": "Asus", "model": "ProBook 4266", "price": 2387.82, "warranty_years": 3}'::jsonb),
-    ('5bc49ac1-222a-4296-a1f8-0646038e8b2c', '9a9d275c-d2c5-41a8-a034-82175715971b', '{"brand": "Google", "model": "Galaxy 11", "price": 1032.01, "warranty_years": 2}'::jsonb),
-    ('7023663e-49a5-4296-bf97-1780653d7089', '9a9d275c-d2c5-41a8-a034-82175715971b', '{"brand": "Apple", "model": "Galaxy 24", "price": 416.44, "warranty_years": 1}'::jsonb),
-    ('4db593c7-aede-496c-ab6b-a94fe3535574', '9a9d275c-d2c5-41a8-a034-82175715971b', '{"brand": "Samsung", "model": "Galaxy 22", "price": 1446.39, "warranty_years": 2}'::jsonb),
-    ('23a430c7-c418-4bde-9c58-2a3bfe58bd06', '9a9d275c-d2c5-41a8-a034-82175715971b', '{"brand": "OnePlus", "model": "Galaxy 10", "price": 629.4, "warranty_years": 2}'::jsonb),
-    ('62a2591e-ad94-4dfd-a377-24c562a1f311', '9a9d275c-d2c5-41a8-a034-82175715971b', '{"brand": "OnePlus", "model": "Galaxy 23", "price": 1183.83, "warranty_years": 2}'::jsonb),
-    ('26e9c1e0-6d40-484b-b2ae-69a836cd144d', '9a9d275c-d2c5-41a8-a034-82175715971b', '{"brand": "OnePlus", "model": "Galaxy 30", "price": 756.65, "warranty_years": 1}'::jsonb),
-    ('a3010d65-2b8d-40f2-9a15-cfb00a4a2d12', '9a9d275c-d2c5-41a8-a034-82175715971b', '{"brand": "Samsung", "model": "Galaxy 11", "price": 1067.17, "warranty_years": 2}'::jsonb),
-    ('33840e50-6b8c-4a7e-9c0f-b7d84e587706', '9a9d275c-d2c5-41a8-a034-82175715971b', '{"brand": "Samsung", "model": "Galaxy 14", "price": 577.91, "warranty_years": 1}'::jsonb),
-    ('9c2ce769-f7e8-49dd-8c7d-c4aa4f15a4b0', '9a9d275c-d2c5-41a8-a034-82175715971b', '{"brand": "Apple", "model": "Galaxy 25", "price": 459.54, "warranty_years": 2}'::jsonb),
-    ('b1a2bea0-05cd-4d8f-9eb1-6410543dfefb', '9a9d275c-d2c5-41a8-a034-82175715971b', '{"brand": "OnePlus", "model": "Galaxy 23", "price": 1088.14, "warranty_years": 1}'::jsonb),
-    ('73237a3d-9593-4a75-a588-32f9e12dd62c', '9a9d275c-d2c5-41a8-a034-82175715971b', '{"brand": "Samsung", "model": "Galaxy 16", "price": 624.34, "warranty_years": 2}'::jsonb),
-    ('410ccaed-6254-42dc-aa44-6b8441a9be39', '9a9d275c-d2c5-41a8-a034-82175715971b', '{"brand": "Apple", "model": "Galaxy 15", "price": 1467.57, "warranty_years": 1}'::jsonb),
-    ('eace1590-f02f-423c-ba8a-1844e6905a29', '9a9d275c-d2c5-41a8-a034-82175715971b', '{"brand": "Samsung", "model": "Galaxy 29", "price": 649.59, "warranty_years": 1}'::jsonb),
-    ('4828e445-b2d6-4437-a84e-533b2573d73b', '9a9d275c-d2c5-41a8-a034-82175715971b', '{"brand": "OnePlus", "model": "Galaxy 23", "price": 1139.94, "warranty_years": 2}'::jsonb),
-    ('1dece336-2f14-4376-930a-f6170d34ae99', '9a9d275c-d2c5-41a8-a034-82175715971b', '{"brand": "Samsung", "model": "Galaxy 14", "price": 743.62, "warranty_years": 2}'::jsonb),
-    ('b46de3f0-4184-4c62-88f8-6cc267acaa40', '9a9d275c-d2c5-41a8-a034-82175715971b', '{"brand": "OnePlus", "model": "Galaxy 30", "price": 1362.27, "warranty_years": 2}'::jsonb),
-    ('85e3ac9c-9781-4a82-b4e4-fe14915c495d', '9a9d275c-d2c5-41a8-a034-82175715971b', '{"brand": "Google", "model": "Galaxy 30", "price": 788.24, "warranty_years": 1}'::jsonb),
-    ('aa705833-42c2-4901-b11a-387ab395a0dd', '9a9d275c-d2c5-41a8-a034-82175715971b', '{"brand": "Google", "model": "Galaxy 21", "price": 1450.33, "warranty_years": 2}'::jsonb),
-    ('26a88792-61e1-4f44-8bc3-22db705b36d0', '9a9d275c-d2c5-41a8-a034-82175715971b', '{"brand": "OnePlus", "model": "Galaxy 26", "price": 517.98, "warranty_years": 2}'::jsonb),
-    ('075701a4-bb4e-4ede-8c19-3e47e1ae8fff', '9a9d275c-d2c5-41a8-a034-82175715971b', '{"brand": "Google", "model": "Galaxy 25", "price": 790.41, "warranty_years": 1}'::jsonb),
-    ('71303b38-8d0b-4dd4-b7a0-3ad534965f55', 'bdd909d3-9b94-473f-aeba-718fc020c942', '{"brand": "H&M", "size": "XL", "color": "White", "material": "Cotton", "price": 78.96}'::jsonb),
-    ('3bbb08c2-18fd-4fcd-a710-05d207da1ba5', 'bdd909d3-9b94-473f-aeba-718fc020c942', '{"brand": "Levi''s", "size": "L", "color": "Blue", "material": "Cotton", "price": 50.11}'::jsonb),
-    ('c80c786a-9655-46ea-898d-4b5c8f3570fe', 'bdd909d3-9b94-473f-aeba-718fc020c942', '{"brand": "H&M", "size": "S", "color": "Black", "material": "Cotton", "price": 24.26}'::jsonb),
-    ('fd6cacc1-3628-4106-8de2-21873f8dff8b', 'bdd909d3-9b94-473f-aeba-718fc020c942', '{"brand": "Nike", "size": "XL", "color": "Black", "material": "Cotton", "price": 24.7}'::jsonb),
-    ('b60e9307-5f3c-4e56-861c-29d7d17a94ea', 'bdd909d3-9b94-473f-aeba-718fc020c942', '{"brand": "Adidas", "size": "XL", "color": "Black", "material": "Cotton", "price": 55.77}'::jsonb),
-    ('07397fd3-196f-492b-9f8a-b6f4629a7b5c', 'bdd909d3-9b94-473f-aeba-718fc020c942', '{"brand": "H&M", "size": "L", "color": "Red", "material": "Cotton", "price": 48.84}'::jsonb),
-    ('bb2c72e2-c568-4dad-8e24-7752a81793ef', 'bdd909d3-9b94-473f-aeba-718fc020c942', '{"brand": "Levi''s", "size": "L", "color": "Red", "material": "Cotton", "price": 74.37}'::jsonb),
-    ('d6a204b2-0dad-4ba9-b514-db7e961f9a21', 'bdd909d3-9b94-473f-aeba-718fc020c942', '{"brand": "Nike", "size": "XL", "color": "Black", "material": "Cotton", "price": 65.16}'::jsonb),
-    ('ba19a6e2-c4e4-4d6b-bdb0-4241fed178e4', 'bdd909d3-9b94-473f-aeba-718fc020c942', '{"brand": "Adidas", "size": "M", "color": "White", "material": "Cotton", "price": 58.28}'::jsonb),
-    ('4868cd95-62bd-4dd5-9690-a3c989d781ec', 'bdd909d3-9b94-473f-aeba-718fc020c942', '{"brand": "Adidas", "size": "M", "color": "Blue", "material": "Cotton", "price": 16.61}'::jsonb),
-    ('4f85891e-df7a-4335-980e-4bc9a8e22cbf', 'bdd909d3-9b94-473f-aeba-718fc020c942', '{"brand": "Levi''s", "size": "XL", "color": "Black", "material": "Cotton", "price": 19.86}'::jsonb),
-    ('ef4df9cd-e88d-428e-8679-b3033c4ccc85', 'bdd909d3-9b94-473f-aeba-718fc020c942', '{"brand": "H&M", "size": "S", "color": "Blue", "material": "Cotton", "price": 33.02}'::jsonb),
-    ('3d19289e-3655-4346-95d4-646373b0f580', 'bdd909d3-9b94-473f-aeba-718fc020c942', '{"brand": "Levi''s", "size": "XL", "color": "Black", "material": "Cotton", "price": 31.83}'::jsonb),
-    ('1bcc0292-5dbc-4971-8989-37b267fb47b5', 'bdd909d3-9b94-473f-aeba-718fc020c942', '{"brand": "Adidas", "size": "XL", "color": "Blue", "material": "Cotton", "price": 61.96}'::jsonb),
-    ('b6726842-1f4e-49a3-a52f-99716d9b118a', 'bdd909d3-9b94-473f-aeba-718fc020c942', '{"brand": "Levi''s", "size": "L", "color": "White", "material": "Cotton", "price": 30.06}'::jsonb),
-    ('bddf72c2-7e52-437e-a2e2-295dd185c863', '657f2139-52a5-40d2-b56d-860ec580ed76', '{"brand": "Zara", "size": "L", "color": "Pink", "material": "Polyester", "price": 196.47}'::jsonb),
-    ('09c83f67-2ba3-4ef3-b16c-a0010f5fb69c', '657f2139-52a5-40d2-b56d-860ec580ed76', '{"brand": "H&M", "size": "L", "color": "White", "material": "Polyester", "price": 228.49}'::jsonb),
-    ('f41231e7-2bb2-4149-a33e-f30730233558', '657f2139-52a5-40d2-b56d-860ec580ed76', '{"brand": "Zara", "size": "S", "color": "Black", "material": "Polyester", "price": 200.69}'::jsonb),
-    ('ac12ca4f-4d51-4b29-ba04-8b42f694a30f', '657f2139-52a5-40d2-b56d-860ec580ed76', '{"brand": "Prada", "size": "XS", "color": "Pink", "material": "Polyester", "price": 85.09}'::jsonb),
-    ('5a06abb1-1b8d-4911-baf8-8d0d1f9f0386', '657f2139-52a5-40d2-b56d-860ec580ed76', '{"brand": "Zara", "size": "XS", "color": "Pink", "material": "Polyester", "price": 114.9}'::jsonb),
-    ('537e5ec4-be32-415c-88dc-d94b25192df0', '657f2139-52a5-40d2-b56d-860ec580ed76', '{"brand": "Zara", "size": "XS", "color": "Pink", "material": "Polyester", "price": 56.04}'::jsonb),
-    ('5e3b3243-1613-4e0c-9b1f-45ac1a6fa732', '657f2139-52a5-40d2-b56d-860ec580ed76', '{"brand": "H&M", "size": "XS", "color": "Black", "material": "Polyester", "price": 34.26}'::jsonb),
-    ('2c067d66-68bd-4259-be45-decb09a146b9', '657f2139-52a5-40d2-b56d-860ec580ed76', '{"brand": "H&M", "size": "S", "color": "White", "material": "Polyester", "price": 216.51}'::jsonb),
-    ('13e46bd6-465e-4ab5-acdb-8c92cc6a80c4', '657f2139-52a5-40d2-b56d-860ec580ed76', '{"brand": "Zara", "size": "XS", "color": "Beige", "material": "Polyester", "price": 74.2}'::jsonb),
-    ('aec19596-e8dd-4d6c-b501-eb04a164f2b7', '657f2139-52a5-40d2-b56d-860ec580ed76', '{"brand": "Gucci", "size": "S", "color": "Black", "material": "Polyester", "price": 64.03}'::jsonb),
-    ('01d95072-62b5-4515-818b-b16a47134121', '657f2139-52a5-40d2-b56d-860ec580ed76', '{"brand": "Zara", "size": "M", "color": "Black", "material": "Polyester", "price": 241.85}'::jsonb),
-    ('e18f67fd-af35-407b-a5ad-7dfb69111b23', '657f2139-52a5-40d2-b56d-860ec580ed76', '{"brand": "H&M", "size": "XS", "color": "White", "material": "Polyester", "price": 150.26}'::jsonb),
-    ('65095f02-382f-4fff-bf17-58186b164321', '657f2139-52a5-40d2-b56d-860ec580ed76', '{"brand": "H&M", "size": "M", "color": "Black", "material": "Polyester", "price": 217.75}'::jsonb),
-    ('3191c9ac-9916-41a2-9db5-88d4ddd3bd2e', '657f2139-52a5-40d2-b56d-860ec580ed76', '{"brand": "Gucci", "size": "M", "color": "Beige", "material": "Polyester", "price": 45.86}'::jsonb),
-    ('7444eeb9-4817-4eec-a53b-98645d32afff', '657f2139-52a5-40d2-b56d-860ec580ed76', '{"brand": "Gucci", "size": "S", "color": "Black", "material": "Polyester", "price": 164.3}'::jsonb),
-    ('4866b50f-086d-4fd2-b7ab-d649f6e29073', '758e95cc-ae5f-4e3f-a535-659552858b6d', '{"author": "Nora Roberts", "isbn": "978-3578742347", "pages": 632, "publisher": "McGraw-Hill", "price": 20.95}'::jsonb),
-    ('c1c54229-9164-4e1d-9da7-c8e383459e17', '758e95cc-ae5f-4e3f-a535-659552858b6d', '{"author": "J.R.R. Tolkien", "isbn": "978-7641699984", "pages": 278, "publisher": "Pearson", "price": 18.26}'::jsonb),
-    ('2fc1e166-98ef-46b9-a5f4-26a0ad78176a', '758e95cc-ae5f-4e3f-a535-659552858b6d', '{"author": "Agatha Christie", "isbn": "978-6464607118", "pages": 695, "publisher": "Cambridge", "price": 18.21}'::jsonb),
-    ('0b7e2968-4502-4b9e-9f31-f35c893efce1', '758e95cc-ae5f-4e3f-a535-659552858b6d', '{"author": "James Patterson", "isbn": "978-9881740264", "pages": 395, "publisher": "Macmillan", "price": 28.62}'::jsonb),
-    ('cf1b2552-3376-4344-b3e1-2bcd2e0ed74e', '758e95cc-ae5f-4e3f-a535-659552858b6d', '{"author": "Stephen King", "isbn": "978-1821864200", "pages": 718, "publisher": "Macmillan", "price": 27.53}'::jsonb),
-    ('782e0ccb-e591-450c-9efe-6d35982f79b9', '758e95cc-ae5f-4e3f-a535-659552858b6d', '{"author": "George R.R. Martin", "isbn": "978-2091955070", "pages": 463, "publisher": "HarperCollins", "price": 25.06}'::jsonb),
-    ('69e1f780-a1d3-4f32-bace-b740e7ced5ce', '758e95cc-ae5f-4e3f-a535-659552858b6d', '{"author": "James Patterson", "isbn": "978-7194625023", "pages": 702, "publisher": "Oxford", "price": 19.22}'::jsonb),
-    ('da82663e-4539-4292-8806-9557e0db3455', '758e95cc-ae5f-4e3f-a535-659552858b6d', '{"author": "J.K. Rowling", "isbn": "978-5775126481", "pages": 356, "publisher": "Simon & Schuster", "price": 17.71}'::jsonb),
-    ('892db157-c4ee-453f-a737-bb4643e188bc', '758e95cc-ae5f-4e3f-a535-659552858b6d', '{"author": "John Grisham", "isbn": "978-4893011436", "pages": 575, "publisher": "Scholastic", "price": 17.8}'::jsonb),
-    ('3490272d-4854-4727-91a3-cb54b2becc1f', '758e95cc-ae5f-4e3f-a535-659552858b6d', '{"author": "Dan Brown", "isbn": "978-2970872055", "pages": 563, "publisher": "Macmillan", "price": 29.17}'::jsonb),
-    ('3aac32b1-f739-4339-b6b6-248aa6991c85', '758e95cc-ae5f-4e3f-a535-659552858b6d', '{"author": "Agatha Christie", "isbn": "978-9688632149", "pages": 617, "publisher": "Cambridge", "price": 12.92}'::jsonb),
-    ('77c74f65-50da-4894-8619-ebe440fa3b97', '758e95cc-ae5f-4e3f-a535-659552858b6d', '{"author": "George R.R. Martin", "isbn": "978-6741228842", "pages": 709, "publisher": "HarperCollins", "price": 15.62}'::jsonb),
-    ('f9cb55c3-4463-491b-b170-3c362d07cffc', '758e95cc-ae5f-4e3f-a535-659552858b6d', '{"author": "J.R.R. Tolkien", "isbn": "978-1274239797", "pages": 602, "publisher": "Penguin", "price": 14.83}'::jsonb),
-    ('da80100f-54cd-4d90-9201-453e2a0f0770', '758e95cc-ae5f-4e3f-a535-659552858b6d', '{"author": "Danielle Steel", "isbn": "978-8480311057", "pages": 463, "publisher": "Cambridge", "price": 21.92}'::jsonb),
-    ('64a1d5d2-14e8-4c69-8393-4d1bc1febc09', '758e95cc-ae5f-4e3f-a535-659552858b6d', '{"author": "John Grisham", "isbn": "978-7707398413", "pages": 217, "publisher": "Pearson", "price": 17.62}'::jsonb),
-    ('59c046c0-3bbf-44e8-9f6c-8c1dcd056c3c', '1556a497-01a3-48e3-9286-9e2c2d914b85', '{"author": "J.R.R. Tolkien", "isbn": "978-7142731009", "pages": 214, "publisher": "Scholastic", "price": 37.16}'::jsonb),
-    ('a7956de9-2653-4536-89db-3b3caa5543f8', '1556a497-01a3-48e3-9286-9e2c2d914b85', '{"author": "Stephen King", "isbn": "978-4593938937", "pages": 460, "publisher": "Pearson", "price": 25.82}'::jsonb),
-    ('ee928603-c153-49d0-ba4c-6d9d49fde648', '1556a497-01a3-48e3-9286-9e2c2d914b85', '{"author": "Danielle Steel", "isbn": "978-3910326814", "pages": 238, "publisher": "Cambridge", "price": 31.31}'::jsonb),
-    ('ecb965a0-4a4f-4e23-8b71-d213d94ca848', '1556a497-01a3-48e3-9286-9e2c2d914b85', '{"author": "Dan Brown", "isbn": "978-6193100750", "pages": 393, "publisher": "Cambridge", "price": 28.86}'::jsonb),
-    ('0b4a9eff-0f21-40a9-bbc0-156ba4481a17', '1556a497-01a3-48e3-9286-9e2c2d914b85', '{"author": "J.R.R. Tolkien", "isbn": "978-8117355190", "pages": 183, "publisher": "Scholastic", "price": 33.02}'::jsonb),
-    ('2294908d-615e-4d93-a21b-506312513350', '1556a497-01a3-48e3-9286-9e2c2d914b85', '{"author": "Stephen King", "isbn": "978-2095036679", "pages": 499, "publisher": "Cambridge", "price": 38.95}'::jsonb),
-    ('260441d1-065e-44c4-8a34-bff1c94e8ae1', '1556a497-01a3-48e3-9286-9e2c2d914b85', '{"author": "Dan Brown", "isbn": "978-5515999226", "pages": 293, "publisher": "Pearson", "price": 34.65}'::jsonb),
-    ('81febd22-30c6-484b-9ca2-ca9ddca7889a', '1556a497-01a3-48e3-9286-9e2c2d914b85', '{"author": "J.K. Rowling", "isbn": "978-5050540540", "pages": 344, "publisher": "Macmillan", "price": 30.94}'::jsonb),
-    ('a3593a5b-3a35-45eb-a5cc-7feb1edbf8f5', '1556a497-01a3-48e3-9286-9e2c2d914b85', '{"author": "Nora Roberts", "isbn": "978-9445642504", "pages": 454, "publisher": "HarperCollins", "price": 25.48}'::jsonb),
-    ('51f4931d-d300-4291-950a-72628263a0b5', '1556a497-01a3-48e3-9286-9e2c2d914b85', '{"author": "Agatha Christie", "isbn": "978-9750629575", "pages": 592, "publisher": "HarperCollins", "price": 18.56}'::jsonb),
-    ('8d95e674-4442-48f1-8638-f6bcdc0cbbc6', '1556a497-01a3-48e3-9286-9e2c2d914b85', '{"author": "John Grisham", "isbn": "978-7553414153", "pages": 159, "publisher": "Pearson", "price": 14.08}'::jsonb),
-    ('0d8a43ab-b02c-4cab-9035-e70f5fd82c96', '1556a497-01a3-48e3-9286-9e2c2d914b85', '{"author": "Dan Brown", "isbn": "978-3288431379", "pages": 411, "publisher": "Pearson", "price": 18.68}'::jsonb),
-    ('894dc30d-2d5f-4bf7-aceb-aebeb712e467', '1556a497-01a3-48e3-9286-9e2c2d914b85', '{"author": "J.K. Rowling", "isbn": "978-1455884351", "pages": 518, "publisher": "HarperCollins", "price": 15.71}'::jsonb),
-    ('30751d18-93ae-4070-97f7-fc79940f8f71', '1556a497-01a3-48e3-9286-9e2c2d914b85', '{"author": "Stephen King", "isbn": "978-6576041986", "pages": 272, "publisher": "Scholastic", "price": 38.63}'::jsonb),
-    ('77e4d02a-ac68-46f9-8555-2b14a970aaaa', '1556a497-01a3-48e3-9286-9e2c2d914b85', '{"author": "Agatha Christie", "isbn": "978-8567065906", "pages": 541, "publisher": "Oxford", "price": 27.08}'::jsonb),
-    ('31b4a594-8d96-46c0-b8ac-d9fb3db9f9ef', '4b16d411-889b-4480-a106-276bde3f7d86', '{"brand": "IKEA", "material": "Wood", "weight_kg": 10.1, "price": 300.87}'::jsonb),
-    ('1019dd24-82ff-4a76-8864-71f6dee66e5a', '4b16d411-889b-4480-a106-276bde3f7d86', '{"brand": "Ashley", "material": "Metal", "weight_kg": 47.6, "price": 171.64}'::jsonb),
-    ('d545b5d9-6042-4a50-b837-c12bcc1cb022', '4b16d411-889b-4480-a106-276bde3f7d86', '{"brand": "IKEA", "material": "Wood", "weight_kg": 31.6, "price": 424.18}'::jsonb),
-    ('bc495a7d-3164-4dcc-8f06-123c4bd73d72', '4b16d411-889b-4480-a106-276bde3f7d86', '{"brand": "Ashley", "material": "Wood", "weight_kg": 33.5, "price": 356.25}'::jsonb),
-    ('6599188f-7919-4971-bf62-9ed7f84a153b', '4b16d411-889b-4480-a106-276bde3f7d86', '{"brand": "Ashley", "material": "Metal", "weight_kg": 34.7, "price": 126.84}'::jsonb),
-    ('17b887ae-7a90-44c8-b5fa-9c8c1c53ee9e', '4b16d411-889b-4480-a106-276bde3f7d86', '{"brand": "Ashley", "material": "Metal", "weight_kg": 15.6, "price": 166.89}'::jsonb),
-    ('13bfedda-b354-4444-bb8c-f444e9844cc0', '4b16d411-889b-4480-a106-276bde3f7d86', '{"brand": "Ashley", "material": "Wood", "weight_kg": 27.6, "price": 126.24}'::jsonb),
-    ('99b04500-4e64-4293-9031-6044b43a33cd', '4b16d411-889b-4480-a106-276bde3f7d86', '{"brand": "Wayfair", "material": "Metal", "weight_kg": 48.8, "price": 224.38}'::jsonb),
-    ('5a68a433-3cd5-43cd-9b0c-a233a3079ad7', '4b16d411-889b-4480-a106-276bde3f7d86', '{"brand": "Wayfair", "material": "Plastic", "weight_kg": 40.8, "price": 384.34}'::jsonb),
-    ('c23805b1-40a1-44ab-ae3f-2b67882bcf5c', '4b16d411-889b-4480-a106-276bde3f7d86', '{"brand": "Ashley", "material": "Wood", "weight_kg": 47.0, "price": 204.5}'::jsonb),
-    ('3a6543c8-4463-49ab-8b9c-43a1f9f7c84b', 'b213c7c5-b522-48e4-a4b6-470002cd3f15', '{"brand": "Ninja", "material": "Plastic", "weight_kg": 6.0, "price": 242.11}'::jsonb),
-    ('99196a61-00a1-46d1-b1a2-e87984158e6e', 'b213c7c5-b522-48e4-a4b6-470002cd3f15', '{"brand": "Cuisinart", "material": "Stainless Steel", "weight_kg": 8.7, "price": 265.8}'::jsonb),
-    ('a291282d-f6a2-44c2-ac64-460a61f616a4', 'b213c7c5-b522-48e4-a4b6-470002cd3f15', '{"brand": "Cuisinart", "material": "Stainless Steel", "weight_kg": 7.0, "price": 264.96}'::jsonb),
-    ('0f791d53-5b4e-4fdb-89cc-2daffdbabc42', 'b213c7c5-b522-48e4-a4b6-470002cd3f15', '{"brand": "Breville", "material": "Stainless Steel", "weight_kg": 8.4, "price": 173.87}'::jsonb),
-    ('17c52c3a-f5a2-4a1e-beb6-9c3608c7120b', 'b213c7c5-b522-48e4-a4b6-470002cd3f15', '{"brand": "Breville", "material": "Plastic", "weight_kg": 3.9, "price": 97.56}'::jsonb),
-    ('788feffa-cf0b-493c-b944-8f675a04239a', 'b213c7c5-b522-48e4-a4b6-470002cd3f15', '{"brand": "Breville", "material": "Plastic", "weight_kg": 9.7, "price": 153.57}'::jsonb),
-    ('2990d3f4-dda1-4d9f-904e-677e33add34b', 'b213c7c5-b522-48e4-a4b6-470002cd3f15', '{"brand": "Cuisinart", "material": "Stainless Steel", "weight_kg": 6.5, "price": 222.91}'::jsonb),
-    ('49a6d6a2-2b10-460d-a47a-8ce1b506e974', 'b213c7c5-b522-48e4-a4b6-470002cd3f15', '{"brand": "Cuisinart", "material": "Stainless Steel", "weight_kg": 2.2, "price": 60.17}'::jsonb),
-    ('2c63efa0-956e-415c-8bdc-f5eb127e8b38', 'b213c7c5-b522-48e4-a4b6-470002cd3f15', '{"brand": "Breville", "material": "Stainless Steel", "weight_kg": 7.3, "price": 219.69}'::jsonb),
-    ('ae8a647b-8400-4601-bab9-aeecd02a3171', 'b213c7c5-b522-48e4-a4b6-470002cd3f15', '{"brand": "Cuisinart", "material": "Plastic", "weight_kg": 11.8, "price": 167.78}'::jsonb);
+-- ------------------------------------------------------------
+-- Every item carries the FULL effective schema of its category:
+-- inherited fields plus its own. Values cycle through realistic
+-- arrays so the data varies without a thousand literal rows.
+-- ============================================================
+
+-- ── Laptops → 20 items (7 effective fields) ─────────────────
+INSERT INTO public.items (category_id, data)
+SELECT 'e0000000-0000-0000-0000-000000000002', jsonb_build_object(
+  'brand',            (ARRAY['Dell','HP','Lenovo','Apple','ASUS'])[1 + (i % 5)],
+  'model_number',     'LP-' || (1000 + i),
+  'warranty_months',  (ARRAY[12,24,36])[1 + (i % 3)],
+  'screen_size_in',   (ARRAY[13.3,14.0,15.6,16.0])[1 + (i % 4)],
+  'ram_gb',           (ARRAY[8,16,32,64])[1 + (i % 4)],
+  'cpu',              (ARRAY['Intel Core i5','Intel Core i7','AMD Ryzen 5','AMD Ryzen 7','Apple M3'])[1 + (i % 5)],
+  'gpu',              (ARRAY['Integrated','NVIDIA RTX 4050','NVIDIA RTX 4060','AMD Radeon 780M'])[1 + (i % 4)]
+) FROM generate_series(0, 19) AS i;
+
+-- ── Gaming Laptops → 8 items (9 effective fields) ───────────
+-- warranty_months is REQUIRED here because of the override, so every
+-- row carries it — the override reaching the data layer, visibly.
+INSERT INTO public.items (category_id, data)
+SELECT 'e0000000-0000-0000-0000-000000000003', jsonb_build_object(
+  'brand',            (ARRAY['ASUS ROG','MSI','Alienware','Razer'])[1 + (i % 4)],
+  'model_number',     'GL-' || (2000 + i),
+  'warranty_months',  (ARRAY[24,36])[1 + (i % 2)],
+  'screen_size_in',   (ARRAY[15.6,16.0,17.3])[1 + (i % 3)],
+  'ram_gb',           (ARRAY[16,32,64])[1 + (i % 3)],
+  'cpu',              (ARRAY['Intel Core i9','AMD Ryzen 9','Intel Core i7'])[1 + (i % 3)],
+  'gpu',              (ARRAY['NVIDIA RTX 4070','NVIDIA RTX 4080','NVIDIA RTX 4090'])[1 + (i % 3)],
+  'refresh_rate_hz',  (ARRAY[144,165,240,360])[1 + (i % 4)],
+  'has_rgb',          (i % 3) <> 0
+) FROM generate_series(0, 7) AS i;
+
+-- ── Smartphones → 20 items (6 effective fields) ─────────────
+INSERT INTO public.items (category_id, data)
+SELECT 'e0000000-0000-0000-0000-000000000004', jsonb_build_object(
+  'brand',            (ARRAY['Apple','Samsung','Google','OnePlus','Xiaomi'])[1 + (i % 5)],
+  'model_number',     'SP-' || (3000 + i),
+  'warranty_months',  (ARRAY[12,24])[1 + (i % 2)],
+  'battery_mah',      (ARRAY[3200,4000,4500,5000])[1 + (i % 4)],
+  'storage_gb',       (ARRAY[128,256,512,1024])[1 + (i % 4)],
+  'has_5g',           (i % 5) <> 0
+) FROM generate_series(0, 19) AS i;
+
+-- ── Mens Clothing → 15 items (5 effective fields) ───────────
+INSERT INTO public.items (category_id, data)
+SELECT 'c0000000-0000-0000-0000-000000000002', jsonb_build_object(
+  'brand',             (ARRAY['Levi''s','Uniqlo','H&M','Zara','Nike'])[1 + (i % 5)],
+  'material',          (ARRAY['Cotton','Denim','Wool','Linen','Polyester'])[1 + (i % 5)],
+  'care_instructions', (ARRAY['Machine wash cold','Hand wash only','Dry clean only'])[1 + (i % 3)],
+  'size',              (ARRAY['XS','S','M','L','XL','XXL'])[1 + (i % 6)],
+  'fit',               (ARRAY['Slim','Regular','Relaxed'])[1 + (i % 3)]
+) FROM generate_series(0, 14) AS i;
+
+-- ── Womens Clothing → 15 items (6 effective fields) ─────────
+INSERT INTO public.items (category_id, data)
+SELECT 'c0000000-0000-0000-0000-000000000003', jsonb_build_object(
+  'brand',             (ARRAY['Zara','Mango','H&M','COS','Uniqlo'])[1 + (i % 5)],
+  'material',          (ARRAY['Cotton','Silk','Wool','Viscose','Linen'])[1 + (i % 5)],
+  'care_instructions', (ARRAY['Machine wash cold','Hand wash only','Dry clean only'])[1 + (i % 3)],
+  'size',              (ARRAY['XS','S','M','L','XL','XXL'])[1 + (i % 6)],
+  'fit',               (ARRAY['Fitted','Regular','Oversized'])[1 + (i % 3)],
+  'is_maternity',      (i % 5) = 0
+) FROM generate_series(0, 14) AS i;
+
+-- ── Fiction → 15 items (6 effective fields) ─────────────────
+INSERT INTO public.items (category_id, data)
+SELECT '40000000-0000-0000-0000-000000000002', jsonb_build_object(
+  'author',     (ARRAY['Ursula K. Le Guin','N. K. Jemisin','Kazuo Ishiguro','Donna Tartt','Neil Gaiman'])[1 + (i % 5)],
+  'isbn',       '978-0-' || (100000 + i * 7),
+  'page_count', 220 + (i * 23) % 400,
+  'language',   (ARRAY['English','Spanish','French'])[1 + (i % 3)],
+  'genre',      (ARRAY['Fantasy','Science Fiction','Mystery','Romance','Thriller','Literary'])[1 + (i % 6)],
+  'is_series',  (i % 3) = 0
+) FROM generate_series(0, 14) AS i;
+
+-- ── Non-Fiction → 15 items (6 effective fields) ─────────────
+INSERT INTO public.items (category_id, data)
+SELECT '40000000-0000-0000-0000-000000000003', jsonb_build_object(
+  'author',     (ARRAY['Yuval Noah Harari','Mary Roach','Bill Bryson','Michelle Alexander','Oliver Sacks'])[1 + (i % 5)],
+  'isbn',       '978-1-' || (200000 + i * 11),
+  'page_count', 180 + (i * 31) % 450,
+  'language',   (ARRAY['English','German','Japanese'])[1 + (i % 3)],
+  'subject',    (ARRAY['History','Science','Biography','Economics','Psychology'])[1 + (i % 5)],
+  'has_index',  (i % 4) <> 0
+) FROM generate_series(0, 14) AS i;
+
+-- ── Furniture → 10 items (5 effective fields) ───────────────
+INSERT INTO public.items (category_id, data)
+SELECT '40000000-0000-0000-0000-000000000012', jsonb_build_object(
+  'brand',             (ARRAY['IKEA','Herman Miller','West Elm','Muji'])[1 + (i % 4)],
+  'material',          (ARRAY['Oak','Pine','Steel','Walnut','Rattan'])[1 + (i % 5)],
+  'dimensions_cm',     (ARRAY['120x60x75','180x90x75','60x60x45','200x100x80'])[1 + (i % 4)],
+  'assembly_required', (i % 3) <> 0,
+  'weight_kg',         (ARRAY[8.5,14.0,22.5,35.0])[1 + (i % 4)]
+) FROM generate_series(0, 9) AS i;
+
+-- ── Kitchen Appliances → 10 items (5 effective fields) ──────
+INSERT INTO public.items (category_id, data)
+SELECT '40000000-0000-0000-0000-000000000013', jsonb_build_object(
+  'brand',              (ARRAY['Bosch','Philips','KitchenAid','Ninja'])[1 + (i % 4)],
+  'material',           (ARRAY['Stainless Steel','Plastic','Glass','Ceramic'])[1 + (i % 4)],
+  'dimensions_cm',      (ARRAY['30x20x25','45x35x40','25x25x30'])[1 + (i % 3)],
+  'wattage',            (ARRAY[600,900,1200,1800])[1 + (i % 4)],
+  'is_dishwasher_safe', (i % 2) = 0
+) FROM generate_series(0, 9) AS i;
+
+
+-- ============================================================
+-- 4. Verification (this is what the SQL editor displays)
+-- ------------------------------------------------------------
+-- `Gaming Laptops` MUST show 9 effective fields:
+--   3 inherited from Electronics + 4 from Laptops + 2 of its own.
+-- `Smartphones` must show 6 and contain NO laptop field.
+-- ============================================================
+SELECT
+  c.name                                                          AS category,
+  jsonb_array_length(public.get_effective_schema(c.id))           AS effective_fields,
+  jsonb_array_length(c.own_fields)                                AS own_fields,
+  (SELECT count(*) FROM jsonb_array_elements(public.get_effective_schema(c.id)) e
+    WHERE (e->>'inherited')::boolean)                             AS inherited_fields,
+  (SELECT count(*) FROM public.items i WHERE i.category_id = c.id) AS items
+FROM public.categories c
+ORDER BY c.name;

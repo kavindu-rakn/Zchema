@@ -7,9 +7,9 @@ import { UserCircle, Mail, Shield, Calendar } from 'lucide-react'
 export const dynamic = 'force-dynamic'
 
 const ROLE_LABELS: Record<string, { label: string; color: string }> = {
-  TEMPLATE_ADMIN:   { label: 'Template Admin',    color: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20' },
-  DATA_CONTRIBUTOR: { label: 'Data Contributor',  color: 'text-blue-400 bg-blue-400/10 border-blue-400/20' },
-  VIEWER:           { label: 'Viewer',             color: 'text-zinc-400 bg-zinc-400/10 border-zinc-400/20' },
+  SCHEMA_ADMIN: { label: 'Schema Admin', color: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20' },
+  DATA_EDITOR:  { label: 'Data Editor',  color: 'text-blue-400 bg-blue-400/10 border-blue-400/20' },
+  VIEWER:       { label: 'Viewer',       color: 'text-zinc-400 bg-zinc-400/10 border-zinc-400/20' },
 }
 
 export default async function SettingsPage() {

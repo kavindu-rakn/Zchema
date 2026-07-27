@@ -1,75 +1,33 @@
-import { fetchCategoryWithTemplate, fetchItems } from "../actions";
-import { ItemsDataTable } from "@/components/items-data-table";
-import { AddItemDialog } from "@/components/add-item-dialog";
-import { createClient } from "@/utils/supabase/server";
-import { notFound } from "next/navigation";
-import { Metadata } from "next";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+
+// The per-category items view is rebuilt on the effective schema in
+// Phase 4 (dynamic form + data table driven by get_effective_schema).
 
 interface CatalogPageProps {
-  params: Promise<{
-    categoryId: string;
-  }>;
+  params: Promise<{ categoryId: string }>;
 }
 
-export async function generateMetadata({ params }: CatalogPageProps): Promise<Metadata> {
+export default async function CatalogCategoryPage({ params }: CatalogPageProps) {
   const { categoryId } = await params;
-  try {
-    const { category } = await fetchCategoryWithTemplate(categoryId);
-    return {
-      title: `${category.name} | SchemaShift`,
-    };
-  } catch {
-    return {
-      title: "Category Not Found | SchemaShift",
-    };
-  }
-}
-
-export default async function CatalogPage({ params }: CatalogPageProps) {
-  const { categoryId } = await params;
-
-  // Fetch role
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user!.id).single();
-  const userRole = profile?.role ?? "VIEWER";
-
-  let categoryWithTemplate;
-  let items;
-
-  try {
-    categoryWithTemplate = await fetchCategoryWithTemplate(categoryId);
-    items = await fetchItems(categoryId);
-  } catch (error) {
-    console.error("Error loading category:", error);
-    notFound();
-  }
-
-  const { category, template } = categoryWithTemplate;
 
   return (
-    <div className="flex flex-col h-full gap-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-zinc-100 tracking-tight">
-            {category.name}
-          </h1>
-          <p className="text-sm text-zinc-400 mt-1">
-            Using template: <span className="font-medium text-zinc-300">{template.name}</span>
-          </p>
-        </div>
-        <AddItemDialog categoryId={category.id} template={template} userRole={userRole} />
+    <div className="flex-1 space-y-4 p-8 pt-6">
+      <div className="flex items-center justify-between space-y-2">
+        <h2 className="text-3xl font-bold tracking-tight text-zinc-100">Items</h2>
       </div>
 
-      <div className="flex-1">
-        <ItemsDataTable 
-          template={template} 
-          items={items} 
-          categoryId={category.id}
-          userRole={userRole}
-        />
-      </div>
+      <Card className="border-zinc-800 bg-zinc-950 text-zinc-100 shadow-sm">
+        <CardHeader>
+          <CardTitle>Rebuilt in Phase 2</CardTitle>
+          <CardDescription className="text-zinc-400">
+            Items for category <code className="text-zinc-300">{categoryId}</code> will render
+            against the category&apos;s effective schema once the workspace is rebuilt.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-zinc-500">Rebuilt in Phase 2.</p>
+        </CardContent>
+      </Card>
     </div>
   );
 }
-
