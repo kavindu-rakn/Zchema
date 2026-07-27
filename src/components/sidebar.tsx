@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import Image from "next/image";
 import { LayoutDashboard, Layers, FolderTree, Database, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +20,8 @@ export function Sidebar({ user, profile }: { user: any; profile: any }) {
 
   return (
     <aside className="w-60 flex-shrink-0 bg-sidebar border-r border-sidebar-border flex flex-col h-screen transition-all duration-300">
-      <div className="h-14 flex items-center px-6 border-b border-sidebar-border">
+      <div className="h-14 flex items-center gap-3 px-6 border-b border-sidebar-border">
+        <Image src="/logo-icon.png" alt="SchemaShift Logo" width={40} height={40} className="object-contain" />
         <span className="font-bold text-lg tracking-tight text-sidebar-foreground">SchemaShift</span>
       </div>
 

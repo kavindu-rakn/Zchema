@@ -1,5 +1,6 @@
 import { ArrowRight, Layers, FolderTree, Database } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 
 export default function Home() {
   return (
@@ -10,6 +11,8 @@ export default function Home() {
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
           Dynamic Catalog Engine
         </div>
+
+        <Image src="/logo-nobg.png" alt="SchemaShift Logo" width={80} height={80} className="rounded-2xl shadow-xl border border-border/20 mt-2 mb-2" priority />
 
         <h1 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
           Schema
