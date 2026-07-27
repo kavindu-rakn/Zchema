@@ -239,12 +239,12 @@ CREATE POLICY "items_delete_contributor"
 -- 8. Triggers for updated_at
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.update_modified_column()
-RETURNS TRIGGER AS \$\$
+RETURNS TRIGGER AS $$
 BEGIN
   NEW.updated_at = now();
   RETURN NEW;
 END;
-\$\$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql;
 
 CREATE TRIGGER update_profiles_modtime BEFORE UPDATE ON public.profiles FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
 CREATE TRIGGER update_templates_modtime BEFORE UPDATE ON public.templates FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
@@ -255,7 +255,7 @@ CREATE TRIGGER update_items_modtime BEFORE UPDATE ON public.items FOR EACH ROW E
 -- 9. Role Update Protection
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.protect_role_update()
-RETURNS TRIGGER AS \$\$
+RETURNS TRIGGER AS $$
 BEGIN
   IF NEW.role IS DISTINCT FROM OLD.role THEN
     IF (SELECT role FROM public.profiles WHERE id = auth.uid()) != 'TEMPLATE_ADMIN' THEN
@@ -264,7 +264,7 @@ BEGIN
   END IF;
   RETURN NEW;
 END;
-\$\$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 CREATE TRIGGER ensure_role_protection BEFORE UPDATE ON public.profiles FOR EACH ROW EXECUTE FUNCTION public.protect_role_update();
 
