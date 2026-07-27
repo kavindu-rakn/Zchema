@@ -29,6 +29,10 @@ export function RoleSwitcher({ user, profile }: { user: any; profile: any }) {
     return null;
   }
 
+  if (user?.email !== "admin@schemashift.lk") {
+    return null;
+  }
+
   const handleRoleChange = async () => {
     if (!user) return;
     setIsLoading(true);
