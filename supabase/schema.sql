@@ -77,7 +77,11 @@ BEGIN
   VALUES (
     NEW.id,
     NEW.email,
-    'VIEWER'
+    CASE 
+      WHEN NEW.email = 'admin@schemashift.lk' THEN 'TEMPLATE_ADMIN'
+      WHEN NEW.email = 'contributor@schemashift.lk' THEN 'DATA_CONTRIBUTOR'
+      ELSE 'VIEWER'
+    END
   );
   RETURN NEW;
 END;
