@@ -215,7 +215,7 @@ BEGIN
     NEW.email,
     CASE
       WHEN NEW.email = 'admin@schemashift.lk'       THEN 'SCHEMA_ADMIN'
-      WHEN NEW.email = 'contributor@schemashift.lk' THEN 'DATA_EDITOR'
+      WHEN NEW.email = 'editor@schemashift.lk' THEN 'DATA_EDITOR'
       ELSE 'VIEWER'
     END
   );

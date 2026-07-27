@@ -102,7 +102,7 @@ SELECT 'd0000000-0000-0000-0000-000000000004', jsonb_build_object(
 -- handle_new_user() auto-creates a profile on signup and maps the two
 -- seed emails automatically:
 --     admin@schemashift.lk       → SCHEMA_ADMIN
---     contributor@schemashift.lk → DATA_EDITOR
+--     editor@schemashift.lk → DATA_EDITOR
 -- Everyone else defaults to VIEWER. To promote another account after
 -- it signs up, run (as a SCHEMA_ADMIN or from this editor):
 --
