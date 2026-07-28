@@ -1,5 +1,6 @@
 import { getCategoryTreeFlat } from "@/lib/data/categories";
 import { buildCategoryTree } from "@/lib/schema";
+import { getCurrentRole } from "@/lib/auth";
 import { Rail } from "@/components/data-center/rail";
 import { MobileTreeDrawer } from "@/components/data-center/mobile-tree-drawer";
 
@@ -19,13 +20,20 @@ export default async function DataCenterLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const tree = buildCategoryTree(await getCategoryTreeFlat());
+  const [tree, role] = await Promise.all([
+    getCategoryTreeFlat().then(buildCategoryTree),
+    getCurrentRole(),
+  ]);
+
+  // Editing affordances are hidden for non-admins. This is presentation
+  // only — every mutation re-checks the role server-side.
+  const canEdit = role === "SCHEMA_ADMIN";
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] w-full overflow-hidden">
-      <Rail tree={tree} />
+      <Rail tree={tree} canEdit={canEdit} />
       <section className="min-w-0 flex-1 overflow-y-auto">
-        <MobileTreeDrawer tree={tree} />
+        <MobileTreeDrawer tree={tree} canEdit={canEdit} />
         {children}
       </section>
     </div>

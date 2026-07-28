@@ -46,7 +46,9 @@ export const OVERRIDABLE_KEYS = [
  *   4. Sort by (depth DESC, position ASC, label ASC).
  *   5. Return an array of EffectiveField.
  */
-export function resolveEffectiveSchema(chain: Category[]): EffectiveField[] {
+export function resolveEffectiveSchema(
+  chain: Pick<Category, "id" | "name" | "own_fields" | "overrides">[]
+): EffectiveField[] {
   // 1. Empty ordered accumulator.
   const acc: EffectiveField[] = [];
   const seen = new Set<string>();
