@@ -85,10 +85,12 @@ export function Rail({ tree }: { tree: CategoryNode[] }) {
 
   return (
     <>
+      {/* Below `lg` the tree lives in a drawer instead — see
+          MobileTreeDrawer, rendered by the Data Center layout. */}
       <aside
         ref={railRef}
         style={{ width }}
-        className="flex shrink-0 flex-col border-r border-border bg-card/30"
+        className="hidden shrink-0 flex-col border-r border-border bg-card/30 lg:flex"
         aria-label="Category tree"
       >
         {/* Filter */}
@@ -131,7 +133,7 @@ export function Rail({ tree }: { tree: CategoryNode[] }) {
         onPointerUp={onPointerUp}
         onKeyDown={onKeyDown}
         className={cn(
-          "w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-primary/40 focus-visible:outline-none focus-visible:bg-primary/60",
+          "hidden w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-primary/40 focus-visible:bg-primary/60 focus-visible:outline-none lg:block",
           dragging && "bg-primary/60"
         )}
       />

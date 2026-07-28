@@ -43,10 +43,10 @@ export default function LoginPage() {
   }
 
   return (
-    <Card className="border-zinc-800 bg-zinc-900/50 backdrop-blur-xl shadow-2xl">
+    <Card className="border-border bg-card/50 backdrop-blur-xl shadow-2xl">
       <CardHeader className="space-y-1">
         <CardTitle className="text-2xl font-medium">Welcome back</CardTitle>
-        <CardDescription className="text-zinc-400">
+        <CardDescription className="text-muted-foreground">
           Enter your credentials to access your account
         </CardDescription>
       </CardHeader>
@@ -59,7 +59,7 @@ export default function LoginPage() {
             </div>
           )}
           <div className="space-y-2">
-            <Label htmlFor="email" className="text-zinc-300">Email</Label>
+            <Label htmlFor="email" className="text-foreground">Email</Label>
             <Input
               id="email"
               type="email"
@@ -67,13 +67,13 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="bg-zinc-800/50 border-zinc-700 focus-visible:ring-emerald-500/50 text-zinc-100 placeholder:text-zinc-500"
+              className="bg-input/50 border-input focus-visible:ring-ring text-foreground placeholder:text-muted-foreground"
             />
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="password" className="text-zinc-300">Password</Label>
-              <Link href="#" className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors">
+              <Label htmlFor="password" className="text-foreground">Password</Label>
+              <Link href="#" className="text-xs text-primary hover:text-primary/80 transition-colors">
                 Forgot password?
               </Link>
             </div>
@@ -83,22 +83,22 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="bg-zinc-800/50 border-zinc-700 focus-visible:ring-emerald-500/50 text-zinc-100"
+              className="bg-input/50 border-input focus-visible:ring-ring text-foreground"
             />
           </div>
         </CardContent>
         <CardFooter className="flex flex-col space-y-4">
           <Button 
             type="submit" 
-            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white transition-all shadow-[0_0_20px_rgba(52,211,153,0.15)] hover:shadow-[0_0_25px_rgba(52,211,153,0.3)]"
+            className="w-full bg-primary hover:bg-primary/90 text-white transition-all shadow-[0_0_20px_rgba(52,211,153,0.15)] hover:shadow-[0_0_25px_rgba(52,211,153,0.3)]"
             disabled={isLoading}
           >
             {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
             {isLoading ? 'Signing in...' : 'Sign in'}
           </Button>
-          <div className="text-center text-sm text-zinc-400">
+          <div className="text-center text-sm text-muted-foreground">
             Don&apos;t have an account?{' '}
-            <Link href="/signup" className="text-emerald-400 hover:text-emerald-300 transition-colors">
+            <Link href="/signup" className="text-primary hover:text-primary/80 transition-colors">
               Sign up
             </Link>
           </div>

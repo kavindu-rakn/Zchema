@@ -1,95 +1,132 @@
-import { createClient } from '@/utils/supabase/server'
-import { redirect } from 'next/navigation'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { UserCircle, Mail, Shield, Calendar } from 'lucide-react'
+import { redirect } from "next/navigation";
+import { Calendar, Mail, Shield } from "lucide-react";
 
-export const dynamic = 'force-dynamic'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { DensityToggle } from "@/components/settings/density-toggle";
+import { UsersTable } from "@/components/settings/users-table";
+import { SignOutEverywhere } from "@/components/settings/sign-out-everywhere";
+import { getCurrentProfile } from "@/lib/auth";
+import { getProfiles } from "@/lib/data/profiles";
 
-const ROLE_LABELS: Record<string, { label: string; color: string }> = {
-  SCHEMA_ADMIN: { label: 'Schema Admin', color: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20' },
-  DATA_EDITOR:  { label: 'Data Editor',  color: 'text-blue-400 bg-blue-400/10 border-blue-400/20' },
-  VIEWER:       { label: 'Viewer',       color: 'text-zinc-400 bg-zinc-400/10 border-zinc-400/20' },
-}
+export const dynamic = "force-dynamic";
+
+const ROLE_LABELS: Record<string, { label: string; description: string }> = {
+  SCHEMA_ADMIN: {
+    label: "Schema Admin",
+    description: "Can change the data model — categories, fields and blueprints.",
+  },
+  DATA_EDITOR: {
+    label: "Data Editor",
+    description: "Can add and edit items, but not change the schema.",
+  },
+  VIEWER: { label: "Viewer", description: "Read-only access." },
+};
 
 export default async function SettingsPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+  const profile = await getCurrentProfile();
+  if (!profile) redirect("/login");
 
-  const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-  const role = profile?.role ?? 'VIEWER'
-  const roleInfo = ROLE_LABELS[role] ?? ROLE_LABELS.VIEWER
+  const isAdmin = profile.role === "SCHEMA_ADMIN";
+  const role = ROLE_LABELS[profile.role] ?? { label: profile.role, description: "" };
 
-  const memberSince = profile?.created_at
-    ? new Date(profile.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-    : '—'
+  // RLS returns only your own row to a non-admin, so this stays cheap.
+  const profiles = isAdmin ? await getProfiles() : [];
 
   return (
-    <div className="flex flex-col gap-6 p-6 max-w-2xl">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-zinc-100">Settings</h1>
-        <p className="text-sm text-zinc-400 mt-1">Your account information and role.</p>
-      </div>
+    <div className="mx-auto flex max-w-3xl flex-col gap-6 p-6">
+      <header className="space-y-1">
+        <h1 className="font-heading text-2xl font-semibold tracking-tight text-foreground">
+          Settings
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Your account, how the app looks, and — for admins — who can do what.
+        </p>
+      </header>
 
-      <Card className="bg-zinc-950 border-zinc-800">
-        <CardHeader className="pb-4">
-          <div className="flex items-center gap-4">
-            <div className="h-12 w-12 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center">
-              <UserCircle className="h-6 w-6 text-zinc-400" />
-            </div>
-            <div>
-              <CardTitle className="text-zinc-100 text-lg">{user.email}</CardTitle>
-              <CardDescription className="text-zinc-500">Account profile</CardDescription>
-            </div>
-          </div>
+      {/* ── Profile ─────────────────────────────────────────── */}
+      <Card className="border-border/50 bg-card">
+        <CardHeader>
+          <CardTitle className="text-base text-foreground">Profile</CardTitle>
+          <CardDescription className="text-muted-foreground">
+            Your role determines what you can change. Only an admin can reassign roles.
+          </CardDescription>
         </CardHeader>
-
-        <CardContent className="space-y-4 pt-2">
-          <div className="h-px bg-zinc-800" />
-
-          <div className="grid grid-cols-1 gap-4">
-            <InfoRow
-              icon={<Mail className="h-4 w-4 text-zinc-500" />}
-              label="Email"
-              value={user.email ?? '—'}
-            />
-            <div className="h-px bg-zinc-900" />
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Shield className="h-4 w-4 text-zinc-500" />
-                <span className="text-sm text-zinc-400">Role</span>
-              </div>
-              <Badge className={`text-xs font-medium border ${roleInfo.color}`}>
-                {roleInfo.label}
-              </Badge>
+        <CardContent>
+          <dl className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1">
+              <dt className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Mail className="h-3.5 w-3.5" />
+                Email
+              </dt>
+              <dd className="truncate text-sm text-foreground">{profile.email}</dd>
             </div>
-            <div className="h-px bg-zinc-900" />
-            <InfoRow
-              icon={<Calendar className="h-4 w-4 text-zinc-500" />}
-              label="Member since"
-              value={memberSince}
-            />
-          </div>
 
-          <div className="h-px bg-zinc-800 mt-2" />
-          <p className="text-xs text-zinc-600 pt-1">
-            To change your role, use the <span className="text-zinc-400">debug Role Switcher</span> (the bug icon in the bottom right). Role management will be available in a future release.
-          </p>
+            <div className="space-y-1">
+              <dt className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Shield className="h-3.5 w-3.5" />
+                Role
+              </dt>
+              <dd className="text-sm text-foreground">
+                <span className="inline-flex items-center rounded border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                  {role.label}
+                </span>
+                <p className="mt-1 text-xs text-muted-foreground">{role.description}</p>
+              </dd>
+            </div>
+
+            <div className="space-y-1">
+              <dt className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Calendar className="h-3.5 w-3.5" />
+                Member since
+              </dt>
+              <dd className="text-sm text-foreground">
+                {new Date(profile.created_at).toLocaleDateString()}
+              </dd>
+            </div>
+          </dl>
+        </CardContent>
+      </Card>
+
+      {/* ── Appearance ──────────────────────────────────────── */}
+      <Card className="border-border/50 bg-card">
+        <CardHeader>
+          <CardTitle className="text-base text-foreground">Appearance</CardTitle>
+          <CardDescription className="text-muted-foreground">
+            SchemaShift is a data tool — compact fits more of your catalogue on screen.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <DensityToggle />
+        </CardContent>
+      </Card>
+
+      {/* ── Users (admin only) ──────────────────────────────── */}
+      {isAdmin && (
+        <Card className="border-border/50 bg-card">
+          <CardHeader>
+            <CardTitle className="text-base text-foreground">Users</CardTitle>
+            <CardDescription className="text-muted-foreground">
+              Everyone who has signed in. New accounts start as Viewer.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <UsersTable profiles={profiles} currentUserId={profile.id} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Danger zone ─────────────────────────────────────── */}
+      <Card className="border-destructive/30 bg-destructive/5">
+        <CardHeader>
+          <CardTitle className="text-base text-destructive">Danger zone</CardTitle>
+          <CardDescription className="text-muted-foreground">
+            Useful if you have signed in somewhere you no longer control.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <SignOutEverywhere />
         </CardContent>
       </Card>
     </div>
-  )
-}
-
-function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-3">
-        {icon}
-        <span className="text-sm text-zinc-400">{label}</span>
-      </div>
-      <span className="text-sm text-zinc-200 font-medium">{value}</span>
-    </div>
-  )
+  );
 }

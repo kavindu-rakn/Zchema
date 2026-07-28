@@ -18,8 +18,12 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "SchemaShift",
   description:
-    "A metadata-driven dynamic catalog engine. Define templates, organize categories, and populate items with dynamically generated forms.",
+    "A schema management system for catalog data. Define fields on a category, inherit them down the tree, and change your data model against live records.",
 };
+
+// Applied before first paint so a saved density does not flash from
+// comfortable to compact on every page load.
+const DENSITY_SCRIPT = `try{var d=localStorage.getItem('schemashift:density');if(d)document.documentElement.setAttribute('data-density',d);}catch(e){}`;
 
 export default function RootLayout({
   children,
@@ -31,7 +35,10 @@ export default function RootLayout({
       lang="en"
       className={`dark ${saira.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-zinc-950 text-zinc-100 font-sans">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: DENSITY_SCRIPT }} />
+      </head>
+      <body className="flex min-h-full flex-col bg-background font-sans text-foreground">
         <TooltipProvider>{children}</TooltipProvider>
         <Toaster theme="dark" position="bottom-right" richColors />
       </body>

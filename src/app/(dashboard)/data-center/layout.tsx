@@ -1,6 +1,7 @@
 import { getCategoryTreeFlat } from "@/lib/data/categories";
 import { buildCategoryTree } from "@/lib/schema";
 import { Rail } from "@/components/data-center/rail";
+import { MobileTreeDrawer } from "@/components/data-center/mobile-tree-drawer";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,10 @@ export default async function DataCenterLayout({
   return (
     <div className="flex h-[calc(100vh-3.5rem)] w-full overflow-hidden">
       <Rail tree={tree} />
-      <section className="min-w-0 flex-1 overflow-y-auto">{children}</section>
+      <section className="min-w-0 flex-1 overflow-y-auto">
+        <MobileTreeDrawer tree={tree} />
+        {children}
+      </section>
     </div>
   );
 }
