@@ -17,31 +17,13 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Bike,
-  Book,
-  BookOpen,
-  Cable,
-  Car,
-  CarFront,
-  CarTaxiFront,
   ChevronRight,
-  CookingPot,
-  Cpu,
-  Folder,
-  GraduationCap,
-  House,
-  Laptop,
+  FolderInput,
   MoreHorizontal,
-  Package,
+  Pencil,
   Plus,
-  Shirt,
-  Smartphone,
-  Sofa,
-  Truck,
-  Gamepad2,
-  type LucideIcon,
+  Trash2,
 } from "lucide-react";
-import { toast } from "sonner";
 
 import {
   DropdownMenu,
@@ -49,7 +31,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { createCategory } from "@/app/(dashboard)/data-center/actions";
+import { iconFor } from "@/components/data-center/category-icons";
+import { CategorySheet } from "@/components/data-center/category-sheet";
+import { MoveCategoryDialog } from "@/components/data-center/move-category-dialog";
+import { DeleteCategoryDialog } from "@/components/data-center/delete-category-dialog";
 import { cn } from "@/lib/utils";
 import {
   ancestorIdsOf,
@@ -58,33 +43,6 @@ import {
   type FlatRow,
 } from "@/lib/tree";
 import type { CategoryNode } from "@/lib/types";
-
-// Icons referenced by the seeds, plus a fallback. A curated map keeps
-// the whole lucide set out of the bundle.
-const ICONS: Record<string, LucideIcon> = {
-  bike: Bike,
-  book: Book,
-  "book-open": BookOpen,
-  cable: Cable,
-  car: Car,
-  "car-front": CarFront,
-  "car-taxi-front": CarTaxiFront,
-  "cooking-pot": CookingPot,
-  cpu: Cpu,
-  "gamepad-2": Gamepad2,
-  "graduation-cap": GraduationCap,
-  house: House,
-  laptop: Laptop,
-  package: Package,
-  shirt: Shirt,
-  smartphone: Smartphone,
-  sofa: Sofa,
-  truck: Truck,
-};
-
-function iconFor(name: string | null): LucideIcon {
-  return (name && ICONS[name]) || Folder;
-}
 
 function Highlight({ text, hits }: { text: string; hits: number[] }) {
   if (!hits.length) return <>{text}</>;
@@ -114,6 +72,9 @@ interface TreeNodeProps {
   onToggle: (id: string) => void;
   onFocus: (id: string) => void;
   onAddChild: (id: string) => void;
+  onEdit: (id: string) => void;
+  onMove: (id: string) => void;
+  onDelete: (id: string) => void;
   rowIndex: number;
   totalRows: number;
 }
@@ -127,6 +88,9 @@ const TreeNode = memo(function TreeNode({
   onToggle,
   onFocus,
   onAddChild,
+  onEdit,
+  onMove,
+  onDelete,
   rowIndex,
   totalRows,
 }: TreeNodeProps) {
@@ -282,8 +246,20 @@ const TreeNode = memo(function TreeNode({
                   <Plus className="mr-2 h-3.5 w-3.5" />
                   Add child category
                 </DropdownMenuItem>
-                <DropdownMenuItem render={<Link href={`/data-center/${node.id}`} />}>
-                  Open
+                <DropdownMenuItem onClick={() => onEdit(node.id)}>
+                  <Pencil className="mr-2 h-3.5 w-3.5" />
+                  Rename &amp; edit
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onMove(node.id)}>
+                  <FolderInput className="mr-2 h-3.5 w-3.5" />
+                  Move…
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => onDelete(node.id)}
+                >
+                  <Trash2 className="mr-2 h-3.5 w-3.5" />
+                  Delete…
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -314,10 +290,25 @@ export function CategoryTree({
 }) {
   const router = useRouter();
   const [focusedId, setFocusedId] = useState<string | null>(null);
-  const [addingUnder, setAddingUnder] = useState<string | null>(null);
-  const [newName, setNewName] = useState("");
-  const [creating, setCreating] = useState(false);
   const listRef = useRef<HTMLUListElement>(null);
+
+  // One instance of each flow, driven by whichever node was acted on.
+  const [createUnder, setCreateUnder] = useState<CategoryNode | null>(null);
+  const [editing, setEditing] = useState<CategoryNode | null>(null);
+  const [moving, setMoving] = useState<CategoryNode | null>(null);
+  const [deleting, setDeleting] = useState<CategoryNode | null>(null);
+
+  const byId = useMemo(() => {
+    const map = new Map<string, CategoryNode>();
+    const walk = (nodes: CategoryNode[]) => {
+      for (const node of nodes) {
+        map.set(node.id, node);
+        walk(node.children);
+      }
+    };
+    walk(tree);
+    return map;
+  }, [tree]);
 
   const filtering = filter.trim().length > 0;
   const { keep, hitsById } = useMemo(
@@ -411,26 +402,56 @@ export function CategoryTree({
     [rows, focusIndex, expanded, filtering, move, onToggle, router]
   );
 
-  const submitChild = async (parentId: string) => {
-    const name = newName.trim();
-    if (!name) return;
-    setCreating(true);
-    try {
-      const result = await createCategory({ name, parent_id: parentId });
-      if (!result.ok) {
-        toast.error(result.error);
-        return;
+  /** Descendant count for the delete confirmation. */
+  const descendantsOf = (node: CategoryNode): number => {
+    let total = 0;
+    const walk = (list: CategoryNode[]) => {
+      for (const child of list) {
+        total += 1;
+        walk(child.children);
       }
-      toast.success(`Created “${name}”`);
-      setNewName("");
-      setAddingUnder(null);
-      onExpand([parentId]);
-      router.refresh();
-      router.push(`/data-center/${result.data.id}`);
-    } finally {
-      setCreating(false);
-    }
+    };
+    walk(node.children);
+    return total;
   };
+
+  const flows = (
+    <>
+      {createUnder && (
+        <CategorySheet
+          open
+          onOpenChange={(next) => !next && setCreateUnder(null)}
+          parentId={createUnder.id}
+          parentName={createUnder.name}
+        />
+      )}
+      {editing && (
+        <CategorySheet
+          open
+          onOpenChange={(next) => !next && setEditing(null)}
+          category={editing}
+        />
+      )}
+      {moving && (
+        <MoveCategoryDialog
+          open
+          onOpenChange={(next) => !next && setMoving(null)}
+          category={moving}
+          tree={tree}
+        />
+      )}
+      {deleting && (
+        <DeleteCategoryDialog
+          open
+          onOpenChange={(next) => !next && setDeleting(null)}
+          categoryId={deleting.id}
+          categoryName={deleting.name}
+          descendantCount={descendantsOf(deleting)}
+          subtreeItemCount={deleting.subtree_item_count}
+        />
+      )}
+    </>
+  );
 
   if (tree.length === 0) {
     return (
@@ -449,20 +470,21 @@ export function CategoryTree({
   }
 
   return (
-    <ul
-      ref={listRef}
-      role="tree"
-      aria-label="Categories"
-      tabIndex={0}
-      onKeyDown={onKeyDown}
-      onFocus={() => {
-        if (!focusedId) setFocusedId(activeId ?? rows[0]?.node.id ?? null);
-      }}
-      className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      {rows.map((row, index) => (
-        <div key={row.node.id}>
+    <>
+      <ul
+        ref={listRef}
+        role="tree"
+        aria-label="Categories"
+        tabIndex={0}
+        onKeyDown={onKeyDown}
+        onFocus={() => {
+          if (!focusedId) setFocusedId(activeId ?? rows[0]?.node.id ?? null);
+        }}
+        className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {rows.map((row, index) => (
           <TreeNode
+            key={row.node.id}
             row={row}
             rowIndex={index}
             totalRows={rows.length}
@@ -473,40 +495,16 @@ export function CategoryTree({
             onToggle={onToggle}
             onFocus={setFocusedId}
             onAddChild={(id) => {
-              setAddingUnder(id);
-              setNewName("");
               onExpand([id]);
+              setCreateUnder(byId.get(id) ?? null);
             }}
+            onEdit={(id) => setEditing(byId.get(id) ?? null)}
+            onMove={(id) => setMoving(byId.get(id) ?? null)}
+            onDelete={(id) => setDeleting(byId.get(id) ?? null)}
           />
-
-          {addingUnder === row.node.id && (
-            <div
-              className="flex items-center gap-1 py-1"
-              style={{ paddingLeft: `${(row.depth + 1) * 16 + 20}px` }}
-            >
-              <input
-                autoFocus
-                value={newName}
-                disabled={creating}
-                onChange={(event) => setNewName(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") submitChild(row.node.id);
-                  if (event.key === "Escape") {
-                    setAddingUnder(null);
-                    setNewName("");
-                  }
-                }}
-                onBlur={() => {
-                  if (!newName.trim()) setAddingUnder(null);
-                }}
-                placeholder="Child category name"
-                aria-label={`New child category under ${row.node.name}`}
-                className="h-7 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-            </div>
-          )}
-        </div>
-      ))}
-    </ul>
+        ))}
+      </ul>
+      {flows}
+    </>
   );
 }

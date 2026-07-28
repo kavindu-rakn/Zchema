@@ -8,7 +8,10 @@ import {
   isDetailTab,
   type DetailTab,
 } from "@/components/data-center/detail-tabs";
-import { DeleteCategoryButton } from "@/components/data-center/delete-category-button";
+import { CategoryActionsBar } from "@/components/data-center/category-actions-bar";
+import { buildCategoryTree } from "@/lib/schema";
+import { getCategoryTreeFlat } from "@/lib/data/categories";
+import { getCurrentRole } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   countSubtreeItems,
@@ -49,7 +52,7 @@ export default async function CategoryDetailPage({ params, searchParams }: PageP
   const category = await getCategory(categoryId).catch(() => null);
   if (!category) notFound();
 
-  const [ancestors, children, effective, directItems, subtreeItems, subtreeIds] =
+  const [ancestors, children, effective, directItems, subtreeItems, subtreeIds, flatTree, role] =
     await Promise.all([
       getCategoryAncestors(categoryId),
       getChildCategories(categoryId),
@@ -57,7 +60,12 @@ export default async function CategoryDetailPage({ params, searchParams }: PageP
       countItems(categoryId),
       countSubtreeItems(categoryId),
       getCategorySubtreeIds(categoryId),
+      getCategoryTreeFlat(),
+      getCurrentRole(),
     ]);
+
+  const tree = buildCategoryTree(flatTree);
+  const canEdit = role === "SCHEMA_ADMIN";
 
   // get_category_ancestors returns root-first with the target last.
   const chain = ancestors.map((node) => ({ id: node.id, name: node.name }));
@@ -82,9 +90,20 @@ export default async function CategoryDetailPage({ params, searchParams }: PageP
               <p className="max-w-2xl text-sm text-muted-foreground">{category.description}</p>
             )}
           </div>
-          <span className="shrink-0 rounded border border-border px-2 py-1 font-mono text-xs text-muted-foreground">
-            /{category.slug}
-          </span>
+          <div className="flex shrink-0 items-center gap-2">
+            {canEdit && (
+              <CategoryActionsBar
+                category={category}
+                tree={tree}
+                descendantCount={descendantCount}
+                subtreeItemCount={subtreeItems}
+                variant="header"
+              />
+            )}
+            <span className="rounded border border-border px-2 py-1 font-mono text-xs text-muted-foreground">
+              /{category.slug}
+            </span>
+          </div>
         </div>
       </header>
 
@@ -236,11 +255,12 @@ export default async function CategoryDetailPage({ params, searchParams }: PageP
                   Deleting this category also deletes everything beneath it — descendant
                   categories and all of their items.
                 </p>
-                <DeleteCategoryButton
-                  categoryId={category.id}
-                  categoryName={category.name}
+                <CategoryActionsBar
+                  category={category}
+                  tree={tree}
                   descendantCount={descendantCount}
                   subtreeItemCount={subtreeItems}
+                  variant="danger"
                 />
               </CardContent>
             </Card>
