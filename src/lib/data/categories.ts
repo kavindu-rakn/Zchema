@@ -82,6 +82,44 @@ export async function getCategoryAncestors(categoryId: string): Promise<
   return data ?? [];
 }
 
+/** Direct children of a category, ordered for display. */
+export async function getChildCategories(parentId: string): Promise<Category[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("categories")
+    .select("*")
+    .eq("parent_id", parentId)
+    .order("position", { ascending: true })
+    .order("name", { ascending: true });
+
+  if (error) throw new Error(`Could not load child categories: ${error.message}`);
+  return (data ?? []) as Category[];
+}
+
+/** Ids of a category and every descendant (the target is included). */
+export async function getCategorySubtreeIds(categoryId: string): Promise<string[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("get_category_subtree", {
+    p_category_id: categoryId,
+  });
+
+  if (error) throw new Error(`Could not load the category subtree: ${error.message}`);
+  return ((data ?? []) as { id: string }[]).map((row) => row.id);
+}
+
+/** Most recently updated categories — quick links for the empty state. */
+export async function getRecentCategories(limit = 3): Promise<Category[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("categories")
+    .select("*")
+    .order("updated_at", { ascending: false })
+    .limit(limit);
+
+  if (error) throw new Error(`Could not load recent categories: ${error.message}`);
+  return (data ?? []) as Category[];
+}
+
 /** Count of items on a category and all of its descendants. */
 export async function countSubtreeItems(categoryId: string): Promise<number> {
   const supabase = await createClient();
