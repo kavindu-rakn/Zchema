@@ -52,7 +52,7 @@ export async function createItem(
 
     if (error) throw new Error(error.message);
 
-    revalidatePath(`/catalog/${categoryId}`);
+    revalidatePath(`/data-center/${categoryId}`);
     return { ok: true, data: { id: created.id as string } };
   } catch (error) {
     return actionError(error, "Could not create the item.");
@@ -75,7 +75,7 @@ export async function updateItem(
     const { error } = await supabase.from("items").update({ data }).eq("id", id);
     if (error) throw new Error(error.message);
 
-    revalidatePath(`/catalog/${categoryId}`);
+    revalidatePath(`/data-center/${categoryId}`);
     return { ok: true, data: null };
   } catch (error) {
     return actionError(error, "Could not update the item.");
@@ -90,7 +90,7 @@ export async function deleteItem(id: string, categoryId: string): Promise<Action
     const { error } = await supabase.from("items").delete().eq("id", id);
     if (error) throw new Error(error.message);
 
-    revalidatePath(`/catalog/${categoryId}`);
+    revalidatePath(`/data-center/${categoryId}`);
     return { ok: true, data: null };
   } catch (error) {
     return actionError(error, "Could not delete the item.");

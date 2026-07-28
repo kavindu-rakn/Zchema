@@ -55,7 +55,7 @@ export async function createBlueprint(input: {
 
     if (error) throw new Error(error.message);
 
-    revalidatePath("/blueprints");
+    revalidatePath("/data-center/blueprints");
     return { ok: true, data: { id: data.id as string } };
   } catch (error) {
     return actionError(error, "Could not create the blueprint.");
@@ -89,8 +89,8 @@ export async function updateBlueprint(
     const { error } = await supabase.from("blueprints").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
 
-    revalidatePath("/blueprints");
-    revalidatePath(`/blueprints/${id}`);
+    revalidatePath("/data-center/blueprints");
+    revalidatePath(`/data-center/blueprints/${id}`);
     return { ok: true, data: null };
   } catch (error) {
     return actionError(error, "Could not update the blueprint.");
@@ -105,7 +105,7 @@ export async function deleteBlueprint(id: string): Promise<ActionResult> {
     const { error } = await supabase.from("blueprints").delete().eq("id", id);
     if (error) throw new Error(error.message);
 
-    revalidatePath("/blueprints");
+    revalidatePath("/data-center/blueprints");
     return { ok: true, data: null };
   } catch (error) {
     return actionError(error, "Could not delete the blueprint.");

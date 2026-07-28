@@ -242,3 +242,51 @@ AS $$
     '[]'::jsonb)
   FROM public.categories c;
 $$;
+
+
+-- ============================================================
+-- 6. get_items_missing_required()  → JSONB[]
+-- ------------------------------------------------------------
+-- Categories holding items that are blank for a field the EFFECTIVE
+-- schema marks required — including fields that only became required
+-- through an inherited override.
+--
+-- Resolves the schema once PER CATEGORY (not per item): doing this in
+-- the client would mean one round trip per category, and doing it
+-- naively in SQL would call the resolver once per row.
+--
+-- Each node: category_id, category_name, missing_count.
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.get_items_missing_required()
+RETURNS JSONB
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  WITH required_by_category AS (
+    SELECT c.id                        AS category_id,
+           c.name                      AS category_name,
+           array_agg(f.elem->>'key')   AS required_keys
+    FROM public.categories c
+    CROSS JOIN LATERAL jsonb_array_elements(public.get_effective_schema(c.id)) AS f(elem)
+    WHERE (f.elem->>'required')::boolean
+    GROUP BY c.id, c.name
+  )
+  SELECT COALESCE(jsonb_agg(x ORDER BY x.missing_count DESC), '[]'::jsonb)
+  FROM (
+    SELECT r.category_id,
+           r.category_name,
+           count(*)::int AS missing_count
+    FROM required_by_category r
+    JOIN public.items i ON i.category_id = r.category_id
+    WHERE EXISTS (
+      SELECT 1
+      FROM unnest(r.required_keys) AS k
+      WHERE NOT (i.data ? k)
+         OR i.data->>k IS NULL
+         OR btrim(i.data->>k) = ''
+    )
+    GROUP BY r.category_id, r.category_name
+  ) x;
+$$;

@@ -27,6 +27,8 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -65,6 +67,10 @@
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
+  /* Phase 5 grades schema changes safe / warning / destructive.
+     `warning` completes that scale so severity reads consistently. */
+  --warning: oklch(0.72 0.16 70);
+  --warning-foreground: oklch(0.16 0.02 70);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
@@ -86,7 +92,7 @@
 
 /* ── Dark theme — Zinc / Slate Supabase-inspired palette ── */
 .dark {
-  /* Deep zinc-950 inspired background */
+  /* Deep neutral background */
   --background: oklch(0.12 0.002 285);
   --foreground: oklch(0.96 0 0);
 
@@ -98,7 +104,7 @@
   --popover: oklch(0.16 0.002 285);
   --popover-foreground: oklch(0.96 0 0);
 
-  /* Primary: emerald-ish accent (Supabase green) */
+  /* Primary: green accent (Supabase-inspired) */
   --primary: oklch(0.72 0.17 162);
   --primary-foreground: oklch(0.14 0.005 163);
 
@@ -117,12 +123,16 @@
   /* Destructive: warm red */
   --destructive: oklch(0.65 0.2 25);
 
+  /* Warning: amber — the middle of the severity scale */
+  --warning: oklch(0.80 0.15 80);
+  --warning-foreground: oklch(0.16 0.002 285);
+
   /* Borders: very subtle zinc dividers */
   --border: oklch(0.28 0.003 285);
   --input: oklch(0.24 0.003 285);
   --ring: oklch(0.72 0.17 162);
 
-  /* Charts: emerald-to-zinc gradient */
+  /* Charts: green-to-neutral gradient */
   --chart-1: oklch(0.72 0.17 162);
   --chart-2: oklch(0.60 0.12 162);
   --chart-3: oklch(0.50 0.08 162);
@@ -178,5 +188,35 @@
   select,
   textarea {
     @apply transition-colors duration-150 ease-in-out;
+  }
+}
+/* ── Density ─────────────────────────────────────────────────
+   Set by the Appearance setting via data-density on <html>.
+   The default ("comfortable") is the spacing the app already had;
+   "compact" tightens the data-heavy surfaces — tables, tree rows and
+   card padding — without touching typography. */
+@layer base {
+  :root {
+    --density-card-padding: 1.5rem;
+    --density-row-padding-y: 0.5rem;
+  }
+
+  [data-density="compact"] {
+    --density-card-padding: 1rem;
+    --density-row-padding-y: 0.25rem;
+  }
+
+  [data-density="compact"] [data-slot="card-content"],
+  [data-density="compact"] [data-slot="card-header"] {
+    padding-inline: var(--density-card-padding);
+  }
+
+  [data-density="compact"] [data-slot="card-content"] {
+    padding-block-end: var(--density-card-padding);
+  }
+
+  [data-density="compact"] [data-slot="table-cell"],
+  [data-density="compact"] [data-slot="table-head"] {
+    padding-block: var(--density-row-padding-y);
   }
 }

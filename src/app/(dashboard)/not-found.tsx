@@ -1,28 +1,29 @@
 import Link from "next/link";
 import { FolderX } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export default function DashboardNotFound() {
   return (
     <div className="flex min-h-[60vh] items-center justify-center p-6">
-      <div className="flex flex-col items-center gap-4 text-center max-w-md">
-        <div className="rounded-full bg-zinc-900 p-4 border border-zinc-800">
-          <FolderX className="h-6 w-6 text-zinc-500" />
+      <div className="flex max-w-md flex-col items-center gap-4 text-center">
+        <div className="rounded-full border border-border bg-card p-4">
+          <FolderX className="h-6 w-6 text-muted-foreground" />
         </div>
-        <h2 className="text-xl font-semibold text-zinc-100">Not found</h2>
-        <p className="text-sm text-zinc-400">
-          The page or resource you&apos;re looking for doesn&apos;t exist or has
-          been removed.
+
+        <h2 className="text-xl font-semibold text-foreground">Not found</h2>
+        <p className="text-sm text-muted-foreground">
+          The page or resource you&apos;re looking for doesn&apos;t exist or has been removed.
         </p>
-        <Link
-          href="/dashboard"
-          className={
-            buttonVariants({ variant: "outline" }) +
-            " mt-2 border-zinc-800 hover:bg-zinc-800 hover:text-zinc-100"
-          }
-        >
-          Back to Dashboard
-        </Link>
+
+        <div className="mt-2 flex flex-wrap justify-center gap-2">
+          <Link href="/data-center" className={cn(buttonVariants({ variant: "outline" }))}>
+            Go to Data Center
+          </Link>
+          <Link href="/dashboard" className={cn(buttonVariants({ variant: "ghost" }))}>
+            Back to dashboard
+          </Link>
+        </div>
       </div>
     </div>
   );
