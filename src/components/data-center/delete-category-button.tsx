@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { deleteCategory } from "@/app/(dashboard)/categories/actions";
+import { deleteCategory } from "@/app/(dashboard)/data-center/actions";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

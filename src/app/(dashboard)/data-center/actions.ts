@@ -14,7 +14,9 @@ import { validateFieldKey } from "@/lib/schema";
 import type { ActionResult, FieldOverride, SchemaField } from "@/lib/types";
 
 function revalidateCategoryViews() {
-  revalidatePath("/categories");
+  // `layout` so the Data Center's persistent tree rail refreshes too —
+  // it is fetched in the layout, not the page.
+  revalidatePath("/data-center", "layout");
   revalidatePath("/dashboard");
 }
 

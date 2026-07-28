@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
-import { createCategory } from "@/app/(dashboard)/categories/actions";
+import { createCategory } from "@/app/(dashboard)/data-center/actions";
 
 export function NewRootCategory() {
   const router = useRouter();
