@@ -59,7 +59,7 @@ export default async function DashboardPage() {
   ];
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 p-6">
       <div>
         <h2 className="text-3xl font-bold tracking-tight text-foreground">Welcome to SchemaShift</h2>
         <p className="text-muted-foreground mt-1">

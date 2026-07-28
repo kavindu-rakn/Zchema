@@ -1,7 +1,14 @@
 "use client";
 
-import { useState } from "react";
+// ── Dev-only role switcher ───────────────────────────────────
+// Was a floating button pinned to the bottom-right of every page.
+// It is now a controlled dialog opened from the avatar menu in the
+// top bar, so the shell owns its trigger and nothing floats.
+
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import type { User } from "@supabase/supabase-js";
+
 import { createClient } from "@/utils/supabase/client";
 import {
   Dialog,
@@ -9,83 +16,110 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Bug } from "lucide-react";
+import type { Profile, UserRole } from "@/lib/types";
 
-const ROLES = ["SCHEMA_ADMIN", "DATA_EDITOR", "VIEWER"];
+const ROLES: UserRole[] = ["SCHEMA_ADMIN", "DATA_EDITOR", "VIEWER"];
 
-export function RoleSwitcher({ user, profile }: { user: any; profile: any }) {
+/**
+ * Whether the role switcher is available to this account.
+ * Development builds only, and only for the seeded admin — the top bar
+ * uses this to decide whether to show the menu entry at all.
+ */
+export function canSwitchRole(email?: string | null): boolean {
+  return process.env.NODE_ENV === "development" && email === "admin@schemashift.lk";
+}
+
+export function RoleSwitcher({
+  user,
+  profile,
+  open,
+  onOpenChange,
+}: {
+  user: User;
+  profile: Profile | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const router = useRouter();
-  const supabase = createClient();
-  const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<string>(profile?.role || "VIEWER");
+  const [selectedRole, setSelectedRole] = useState<string>(profile?.role ?? "VIEWER");
+  const [error, setError] = useState<string | null>(null);
 
-  if (process.env.NODE_ENV !== "development") {
-    return null;
-  }
+  // Keep the radio in sync when the profile changes underneath us.
+  useEffect(() => {
+    setSelectedRole(profile?.role ?? "VIEWER");
+  }, [profile?.role]);
 
-  if (user?.email !== "admin@schemashift.lk") {
-    return null;
-  }
+  if (!canSwitchRole(user?.email)) return null;
 
   const handleRoleChange = async () => {
     if (!user) return;
     setIsLoading(true);
+    setError(null);
     try {
-      const { error } = await supabase
+      const supabase = createClient();
+      const { error: updateError } = await supabase
         .from("profiles")
         .update({ role: selectedRole })
         .eq("id", user.id);
 
-      if (!error) {
-        setIsOpen(false);
-        router.refresh();
-      } else {
-        console.error("Failed to update role:", error);
+      if (updateError) {
+        setError(updateError.message);
+        return;
       }
+      onOpenChange(false);
+      router.refresh();
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50">
-      <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogTrigger className="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border shadow-sm rounded-full h-12 w-12 bg-background border-primary/30 text-primary hover:bg-primary/10 hover:text-primary transition-all duration-300 hover:scale-110">
-          <Bug className="h-5 w-5" />
-        </DialogTrigger>
-        <DialogContent className="sm:max-w-md bg-background border-border">
-          <DialogHeader>
-            <DialogTitle className="text-foreground">Debug: Switch Role</DialogTitle>
-            <DialogDescription className="text-muted-foreground">
-              Change your current role to test different access levels across the dashboard.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-6">
-            <RadioGroup value={selectedRole} onValueChange={setSelectedRole} className="space-y-4">
-              {ROLES.map((role) => (
-                <div key={role} className="flex items-center space-x-3 bg-secondary/20 p-3 rounded-md border border-border/50 transition-colors hover:border-primary/50">
-                  <RadioGroupItem value={role} id={role} className="text-primary border-primary" />
-                  <Label htmlFor={role} className="font-mono text-sm cursor-pointer w-full text-foreground">
-                    {role}
-                  </Label>
-                </div>
-              ))}
-            </RadioGroup>
-          </div>
-          <div className="flex justify-end gap-3">
-            <Button variant="ghost" onClick={() => setIsOpen(false)}>Cancel</Button>
-            <Button onClick={handleRoleChange} disabled={isLoading} className="bg-primary text-primary-foreground hover:bg-primary/90">
-              {isLoading ? "Updating..." : "Save Role"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="border-border bg-background sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-foreground">Switch role</DialogTitle>
+          <DialogDescription className="text-muted-foreground">
+            Development only. Changes your own role so you can check how each access level
+            sees the app.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="py-4">
+          <RadioGroup value={selectedRole} onValueChange={setSelectedRole} className="space-y-3">
+            {ROLES.map((role) => (
+              <div
+                key={role}
+                className="flex items-center space-x-3 rounded-md border border-border/50 bg-secondary/20 p-3 transition-colors hover:border-primary/50"
+              >
+                <RadioGroupItem value={role} id={role} className="border-primary text-primary" />
+                <Label htmlFor={role} className="w-full cursor-pointer font-mono text-sm text-foreground">
+                  {role}
+                </Label>
+              </div>
+            ))}
+          </RadioGroup>
+
+          {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
+        </div>
+
+        <div className="flex justify-end gap-3">
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleRoleChange}
+            disabled={isLoading}
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            {isLoading ? "Updating…" : "Save role"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
