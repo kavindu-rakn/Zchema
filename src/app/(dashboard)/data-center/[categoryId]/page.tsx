@@ -9,6 +9,7 @@ import {
   type DetailTab,
 } from "@/components/data-center/detail-tabs";
 import { CategoryActionsBar } from "@/components/data-center/category-actions-bar";
+import { SchemaEditor } from "@/components/data-center/schema-editor";
 import { buildCategoryTree } from "@/lib/schema";
 import { getCategoryTreeFlat } from "@/lib/data/categories";
 import { getCurrentRole } from "@/lib/auth";
@@ -268,9 +269,19 @@ export default async function CategoryDetailPage({ params, searchParams }: PageP
         )}
 
         {tab === "schema" && (
-          <TabPlaceholder
-            title="Schema composition editor"
-            phase="Phase 3"
+          <SchemaEditor
+            category={category}
+            chain={[
+              // get_category_ancestors returns root-first with this
+              // category last — exactly the order the resolver wants.
+              ...ancestors.map((node) => ({
+                id: node.id,
+                name: node.name,
+                own_fields: node.own_fields,
+                overrides: node.overrides,
+              })),
+            ]}
+            canEdit={canEdit}
           />
         )}
         {tab === "items" && <TabPlaceholder title="Items workspace" phase="Phase 4" />}
