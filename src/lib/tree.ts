@@ -114,6 +114,32 @@ export function flattenTree(
   return rows;
 }
 
+/**
+ * The full chain from the root down to `targetId`, target last.
+ *
+ * `get_category_tree()` returns whole category rows, so any node's
+ * effective schema can be resolved entirely client-side from this —
+ * no round trip for hover previews or provenance.
+ */
+export function chainTo(nodes: CategoryNode[], targetId: string): CategoryNode[] {
+  let result: CategoryNode[] = [];
+
+  const find = (list: CategoryNode[], chain: CategoryNode[]): boolean => {
+    for (const node of list) {
+      const next = [...chain, node];
+      if (node.id === targetId) {
+        result = next;
+        return true;
+      }
+      if (find(node.children, next)) return true;
+    }
+    return false;
+  };
+
+  find(nodes, []);
+  return result;
+}
+
 /** Ancestor ids of `targetId`, root-first. Empty when not found. */
 export function ancestorIdsOf(nodes: CategoryNode[], targetId: string): string[] {
   let result: string[] = [];

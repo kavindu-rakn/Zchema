@@ -247,6 +247,56 @@ export function slugify(name: string): string {
   return slug || "category";
 }
 
+/** One hop in the story of how a field reached a category. */
+export interface ProvenanceStep {
+  category_id: string;
+  category_name: string;
+  role: "defined" | "inherited" | "overridden";
+  /** Which properties this category patched, when role is "overridden". */
+  patched: string[];
+}
+
+/**
+ * Trace where a field came from and what happened to it on the way
+ * down: which category defined it, which merely passed it along, and
+ * which patched it.
+ *
+ * @param chain Ancestors ROOT-FIRST, target last.
+ * @returns steps from the defining category down to the target, or an
+ *          empty array if no category in the chain defines the key.
+ */
+export function fieldProvenance(
+  chain: Pick<Category, "id" | "name" | "own_fields" | "overrides">[],
+  key: string
+): ProvenanceStep[] {
+  const definedAt = chain.findIndex((node) =>
+    (node.own_fields ?? []).some((field) => field.key === key)
+  );
+  if (definedAt === -1) return [];
+
+  return chain.slice(definedAt).map((node, index) => {
+    const patch = node.overrides?.[key];
+    const patched = patch
+      ? OVERRIDABLE_KEYS.filter((prop) => prop in patch).map(String)
+      : [];
+
+    if (index === 0) {
+      return {
+        category_id: node.id,
+        category_name: node.name,
+        role: "defined" as const,
+        patched,
+      };
+    }
+    return {
+      category_id: node.id,
+      category_name: node.name,
+      role: patched.length ? ("overridden" as const) : ("inherited" as const),
+      patched,
+    };
+  });
+}
+
 /** Convenience: the fields a category owns, ordered for display. */
 export function sortOwnFields(fields: SchemaField[]): SchemaField[] {
   return [...fields].sort((a, b) =>

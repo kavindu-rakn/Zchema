@@ -32,6 +32,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { iconFor } from "@/components/data-center/category-icons";
+import { TreeHoverCard } from "@/components/data-center/tree-hover-card";
 import { CategorySheet } from "@/components/data-center/category-sheet";
 import { MoveCategoryDialog } from "@/components/data-center/move-category-dialog";
 import { DeleteCategoryDialog } from "@/components/data-center/delete-category-dialog";
@@ -65,6 +66,8 @@ function Highlight({ text, hits }: { text: string; hits: number[] }) {
 // ── Row ──────────────────────────────────────────────────────
 interface TreeNodeProps {
   row: FlatRow;
+  /** Whole tree, so the hover card can resolve this node's schema. */
+  tree: CategoryNode[];
   isActive: boolean;
   isFocused: boolean;
   isExpanded: boolean;
@@ -81,6 +84,7 @@ interface TreeNodeProps {
 
 const TreeNode = memo(function TreeNode({
   row,
+  tree,
   isActive,
   isFocused,
   isExpanded,
@@ -169,32 +173,34 @@ const TreeNode = memo(function TreeNode({
           <span className="w-5 shrink-0" aria-hidden />
         )}
 
-        {/* Name — the select target */}
-        <Link
-          href={`/data-center/${node.id}`}
-          tabIndex={-1}
-          onFocus={() => onFocus(node.id)}
-          className="flex min-w-0 flex-1 items-center gap-1.5 text-sm focus:outline-none"
-        >
-          <Icon
-            className="h-3.5 w-3.5 shrink-0"
-            style={node.color ? { color: node.color } : undefined}
-            aria-hidden
-          />
-          <span
-            className={cn(
-              "truncate",
-              isActive
-                ? "font-medium text-foreground"
-                : isGrouping
-                  ? "font-normal text-muted-foreground"
-                  : "text-foreground/90"
-            )}
-            title={node.name}
+        {/* Name — the select target, with a hover preview of the node */}
+        <TreeHoverCard tree={tree} node={node}>
+          <Link
+            href={`/data-center/${node.id}`}
+            tabIndex={-1}
+            onFocus={() => onFocus(node.id)}
+            className="flex min-w-0 flex-1 items-center gap-1.5 text-sm focus:outline-none"
           >
-            <Highlight text={node.name} hits={hits} />
-          </span>
-        </Link>
+            <Icon
+              className="h-3.5 w-3.5 shrink-0"
+              style={node.color ? { color: node.color } : undefined}
+              aria-hidden
+            />
+            <span
+              className={cn(
+                "truncate",
+                isActive
+                  ? "font-medium text-foreground"
+                  : isGrouping
+                    ? "font-normal text-muted-foreground"
+                    : "text-foreground/90"
+              )}
+              title={node.name}
+            >
+              <Highlight text={node.name} hits={hits} />
+            </span>
+          </Link>
+        </TreeHoverCard>
 
         {/* Counts — hidden while hovering so the actions can take the space
             without the row reflowing. */}
@@ -486,6 +492,7 @@ export function CategoryTree({
           <TreeNode
             key={row.node.id}
             row={row}
+            tree={tree}
             rowIndex={index}
             totalRows={rows.length}
             isActive={row.node.id === activeId}
