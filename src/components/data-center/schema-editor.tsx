@@ -39,6 +39,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { DynamicForm } from "@/components/data-center/dynamic-form";
 import { OptionsEditor } from "@/components/data-center/options-editor";
 import { FieldProvenance } from "@/components/data-center/field-provenance";
+import { SaveAsBlueprint } from "@/components/blueprints/save-as-blueprint";
 import { updateCategorySchema } from "@/app/(dashboard)/data-center/actions";
 import { diffSchemas, resolveEffectiveSchema, slugify, validateFieldKey } from "@/lib/schema";
 import { cn } from "@/lib/utils";
@@ -558,6 +559,11 @@ export function SchemaEditor({
                   />
                   <TooltipContent>Coming in Phase 6</TooltipContent>
                 </Tooltip>
+                <SaveAsBlueprint
+                  categoryId={category.id}
+                  categoryName={category.name}
+                  ownFields={stripDraft(ownFields)}
+                />
               </div>
             )}
           </section>
