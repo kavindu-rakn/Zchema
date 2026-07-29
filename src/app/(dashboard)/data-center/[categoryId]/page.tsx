@@ -12,7 +12,7 @@ import { CategoryActionsBar } from "@/components/data-center/category-actions-ba
 import { SchemaEditor } from "@/components/data-center/schema-editor";
 import { InheritanceFlow } from "@/components/data-center/inheritance-flow";
 import { ItemsTable } from "@/components/data-center/items-table";
-import { queryItems } from "@/lib/data/items";
+import { getItemHealthCounts, queryItems } from "@/lib/data/items";
 import { commonFields, decodeFilters } from "@/lib/items-table";
 import type { EffectiveField } from "@/lib/types";
 
@@ -111,11 +111,18 @@ export default async function CategoryDetailPage({ params, searchParams }: PageP
   const tableSchema =
     tab === "items" && includeSubtree ? commonFields(subtreeSchemas) : effective;
 
+  const healthParam =
+    query.health === "incomplete" || query.health === "orphaned" ? query.health : null;
+
+  const itemHealth =
+    tab === "items" ? await getItemHealthCounts(categoryId, includeSubtree) : undefined;
+
   const itemQuery =
     tab === "items"
       ? await queryItems({
           categoryId,
           includeSubtree,
+          health: healthParam,
           sortKey: sortParam,
           sortType: typeof query.type === "string" ? query.type : "string",
           sortDir: query.dir === "desc" ? "desc" : "asc",
@@ -383,6 +390,7 @@ export default async function CategoryDetailPage({ params, searchParams }: PageP
             includeSubtree={includeSubtree}
             hasChildren={children.length > 0}
             subtreeCategoryCount={subtreeIds.length}
+            health={itemHealth}
           />
         )}
         {tab === "history" && (

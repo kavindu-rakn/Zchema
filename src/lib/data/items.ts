@@ -50,6 +50,8 @@ export interface ItemRow extends Item {
   category_name: string;
 }
 
+export type ItemHealth = "incomplete" | "orphaned";
+
 export interface ItemQuery {
   categoryId: string;
   includeSubtree?: boolean;
@@ -59,6 +61,28 @@ export interface ItemQuery {
   filters?: ItemFilter[];
   page?: number;
   pageSize?: number;
+  health?: ItemHealth | null;
+}
+
+export interface ItemHealthCounts {
+  total: number;
+  incomplete: number;
+  orphaned: number;
+}
+
+/** Totals for the Items tab header strip. */
+export async function getItemHealthCounts(
+  categoryId: string,
+  includeSubtree = false
+): Promise<ItemHealthCounts> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("get_item_health_counts", {
+    p_category_id: categoryId,
+    p_include_subtree: includeSubtree,
+  });
+
+  if (error) throw new Error(`Could not load item health: ${error.message}`);
+  return (data ?? { total: 0, incomplete: 0, orphaned: 0 }) as ItemHealthCounts;
 }
 
 /**
@@ -84,6 +108,7 @@ export async function queryItems(
     p_filters: query.filters ?? [],
     p_limit: pageSize,
     p_offset: (page - 1) * pageSize,
+    p_health: query.health ?? null,
   });
 
   if (error) throw new Error(`Could not load items: ${error.message}`);

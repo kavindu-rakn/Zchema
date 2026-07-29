@@ -33,7 +33,7 @@ import {
 } from "@/lib/items-table";
 import { cn } from "@/lib/utils";
 import { BulkActionsBar } from "@/components/data-center/bulk-actions-bar";
-import type { ItemFilter, ItemRow } from "@/lib/data/items";
+import type { ItemFilter, ItemHealthCounts, ItemRow } from "@/lib/data/items";
 import type { CategoryNode, EffectiveField } from "@/lib/types";
 
 export function ItemsTable({
@@ -52,6 +52,7 @@ export function ItemsTable({
   schemasByCategory = {},
   hasChildren = false,
   subtreeCategoryCount = 1,
+  health,
 }: {
   categoryId: string;
   categoryName: string;
@@ -72,6 +73,7 @@ export function ItemsTable({
   schemasByCategory?: Record<string, EffectiveField[]>;
   hasChildren?: boolean;
   subtreeCategoryCount?: number;
+  health?: ItemHealthCounts;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -137,6 +139,7 @@ export function ItemsTable({
 
   const sortKey = searchParams.get("sort");
   const sortDir = searchParams.get("dir") === "desc" ? "desc" : "asc";
+  const activeHealth = searchParams.get("health");
 
   /** Rewrite the URL, keeping every unrelated param intact. */
   const setParams = useCallback(
@@ -179,6 +182,70 @@ export function ItemsTable({
 
   return (
     <div className="space-y-3">
+      {/* Health strip — each segment is a one-click filter */}
+      {health && (
+        <div className="flex flex-wrap items-center gap-1 text-xs">
+          <button
+            type="button"
+            onClick={() => setParams({ health: null, page: null })}
+            className={cn(
+              "rounded-md px-2 py-1 transition-colors",
+              !activeHealth
+                ? "bg-secondary font-medium text-foreground"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground"
+            )}
+          >
+            {health.total.toLocaleString()} item{health.total === 1 ? "" : "s"}
+          </button>
+
+          <span className="text-muted-foreground/50">·</span>
+
+          <button
+            type="button"
+            disabled={health.incomplete === 0}
+            onClick={() =>
+              setParams({
+                health: activeHealth === "incomplete" ? null : "incomplete",
+                page: null,
+              })
+            }
+            className={cn(
+              "rounded-md px-2 py-1 transition-colors disabled:opacity-50",
+              activeHealth === "incomplete"
+                ? "bg-destructive/15 font-medium text-destructive"
+                : health.incomplete > 0
+                  ? "text-destructive hover:bg-destructive/10"
+                  : "text-muted-foreground"
+            )}
+          >
+            {health.incomplete} incomplete
+          </button>
+
+          <span className="text-muted-foreground/50">·</span>
+
+          <button
+            type="button"
+            disabled={health.orphaned === 0}
+            onClick={() =>
+              setParams({
+                health: activeHealth === "orphaned" ? null : "orphaned",
+                page: null,
+              })
+            }
+            className={cn(
+              "rounded-md px-2 py-1 transition-colors disabled:opacity-50",
+              activeHealth === "orphaned"
+                ? "bg-warning/20 font-medium text-warning"
+                : health.orphaned > 0
+                  ? "text-warning hover:bg-warning/10"
+                  : "text-muted-foreground"
+            )}
+          >
+            {health.orphaned} with orphaned data
+          </button>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-3">
@@ -251,11 +318,21 @@ export function ItemsTable({
         </p>
       )}
 
+      {/* The fastest way out of the mess a newly-required field makes:
+          filter to incomplete, select all, set one value for the lot. */}
+      {canEdit && activeHealth === "incomplete" && rows.length > 0 && selected.size === 0 && (
+        <p className="flex items-center gap-2 rounded-md border border-border bg-card/40 px-3 py-2 text-xs text-muted-foreground">
+          <Info className="h-3 w-3 shrink-0" />
+          Select these rows and use <strong className="text-foreground">Set a field</strong> to
+          fill the same value across all of them.
+        </p>
+      )}
+
       {canEdit && selected.size > 0 && (
         <BulkActionsBar
           selected={[...selected]}
           categoryId={categoryId}
-          schema={schema}
+          schema={fullSchema ?? schema}
           tree={tree}
           onClear={() => setSelected(new Set())}
         />

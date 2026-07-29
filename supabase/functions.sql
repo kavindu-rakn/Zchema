@@ -318,7 +318,10 @@ CREATE OR REPLACE FUNCTION public.query_items(
   p_sort_dir        TEXT    DEFAULT 'asc',
   p_filters         JSONB   DEFAULT '[]'::jsonb,
   p_limit           INT     DEFAULT 50,
-  p_offset          INT     DEFAULT 0
+  p_offset          INT     DEFAULT 0,
+  -- 'incomplete' | 'orphaned' | NULL. Drives the one-click health
+  -- filters in the Items tab header strip.
+  p_health          TEXT    DEFAULT NULL
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -337,10 +340,13 @@ DECLARE
   ftype      TEXT;
   fval       TEXT;
   fval2      TEXT;
-  cast_expr  TEXT;
-  scope_sql  TEXT;
-  total      INT;
-  rows_json  JSONB;
+  cast_expr    TEXT;
+  scope_sql    TEXT;
+  health_cte   TEXT := '';
+  health_join  TEXT := '';
+  health_where TEXT := '';
+  total        INT;
+  rows_json    JSONB;
 BEGIN
   dir := CASE WHEN lower(COALESCE(p_sort_dir, 'asc')) = 'desc' THEN 'DESC' ELSE 'ASC' END;
 
@@ -417,6 +423,35 @@ BEGIN
     END IF;
   END LOOP;
 
+  -- ── Health filter ─────────────────────────────────────────
+  -- "Incomplete" means missing a value for a REQUIRED field of the
+  -- item's own effective schema. Required keys are resolved once per
+  -- category in a CTE, not once per row.
+  IF p_health = 'incomplete' THEN
+    health_cte := format(
+      'WITH req AS ('
+      || 'SELECT c.id AS category_id, '
+      || 'COALESCE(array_agg(f.elem->>%L) FILTER (WHERE (f.elem->>%L)::boolean), ARRAY[]::text[]) AS required_keys '
+      || 'FROM public.categories c '
+      || 'CROSS JOIN LATERAL jsonb_array_elements(public.get_effective_schema(c.id)) AS f(elem) '
+      || 'WHERE c.id IN (SELECT DISTINCT i2.category_id FROM public.items i2 WHERE %s) '
+      || 'GROUP BY c.id) ',
+      'key', 'required',
+      replace(scope_sql, 'i.', 'i2.')
+    );
+    health_join  := 'LEFT JOIN req r ON r.category_id = i.category_id';
+    health_where := format(
+      ' AND EXISTS (SELECT 1 FROM unnest(COALESCE(r.required_keys, ARRAY[]::text[])) AS k'
+      || ' WHERE NOT (i.data ? k) OR i.data->>k IS NULL OR btrim(i.data->>k) = %L)',
+      ''
+    );
+  ELSIF p_health = 'orphaned' THEN
+    health_where := format(
+      ' AND (i.data ? %L) AND i.data->%L <> %L::jsonb',
+      '__orphaned', '__orphaned', '{}'
+    );
+  END IF;
+
   -- ── Sort ──────────────────────────────────────────────────
   IF p_sort_key IS NULL OR p_sort_key = '' THEN
     order_sql := 'i.created_at DESC';
@@ -448,17 +483,18 @@ BEGIN
 
   -- ── Count, then page ──────────────────────────────────────
   EXECUTE format(
-    'SELECT count(*)::int FROM public.items i WHERE %s AND %s', scope_sql, where_sql
+    '%s SELECT count(*)::int FROM public.items i %s WHERE %s AND %s %s',
+    health_cte, health_join, scope_sql, where_sql, health_where
   ) INTO total;
 
   EXECUTE format(
-    'SELECT COALESCE(jsonb_agg(r ORDER BY r.ord), %L::jsonb) FROM ('
+    '%s SELECT COALESCE(jsonb_agg(rw ORDER BY rw.ord), %L::jsonb) FROM ('
     || 'SELECT row_number() OVER (ORDER BY %s) AS ord, i.id, i.category_id, i.data, '
     || 'i.schema_version, i.created_at, i.updated_at, c.name AS category_name '
-    || 'FROM public.items i JOIN public.categories c ON c.id = i.category_id '
-    || 'WHERE %s AND %s ORDER BY %s LIMIT %s OFFSET %s'
-    || ') r',
-    '[]', order_sql, scope_sql, where_sql, order_sql,
+    || 'FROM public.items i JOIN public.categories c ON c.id = i.category_id %s '
+    || 'WHERE %s AND %s %s ORDER BY %s LIMIT %s OFFSET %s'
+    || ') rw',
+    health_cte, '[]', order_sql, health_join, scope_sql, where_sql, health_where, order_sql,
     GREATEST(COALESCE(p_limit, 50), 1), GREATEST(COALESCE(p_offset, 0), 0)
   ) INTO rows_json;
 
@@ -608,5 +644,87 @@ AS $$
          OR i.data->>k IS NULL
          OR btrim(i.data->>k) = ''
     )
+  ) x;
+$$;
+
+
+-- ============================================================
+-- 10. get_item_health_counts(p_category_id, p_include_subtree)
+-- ------------------------------------------------------------
+-- Totals for the Items tab header strip:
+--   "48 items · 5 incomplete · 2 with orphaned data"
+--
+-- Required keys are resolved ONCE PER CATEGORY via a CTE rather than
+-- once per item — the same reason get_items_missing_required exists.
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.get_item_health_counts(
+  p_category_id     UUID,
+  p_include_subtree BOOLEAN DEFAULT false
+)
+RETURNS JSONB
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  WITH scope AS (
+    SELECT CASE
+      WHEN p_include_subtree
+        THEN (SELECT array_agg(s.id) FROM public.get_category_subtree(p_category_id) s)
+      ELSE ARRAY[p_category_id]
+    END AS ids
+  ),
+  req AS (
+    SELECT c.id AS category_id,
+           COALESCE(array_agg(f.elem->>'key') FILTER (
+             WHERE (f.elem->>'required')::boolean
+           ), ARRAY[]::TEXT[]) AS required_keys
+    FROM public.categories c
+    CROSS JOIN LATERAL jsonb_array_elements(public.get_effective_schema(c.id)) AS f(elem)
+    WHERE c.id = ANY((SELECT ids FROM scope))
+    GROUP BY c.id
+  ),
+  scoped AS (
+    SELECT i.id, i.data, r.required_keys
+    FROM public.items i
+    LEFT JOIN req r ON r.category_id = i.category_id
+    WHERE i.category_id = ANY((SELECT ids FROM scope))
+  )
+  SELECT jsonb_build_object(
+    'total', count(*)::int,
+    'incomplete', count(*) FILTER (WHERE EXISTS (
+      SELECT 1 FROM unnest(COALESCE(s.required_keys, ARRAY[]::TEXT[])) AS k
+      WHERE NOT (s.data ? k) OR s.data->>k IS NULL OR btrim(s.data->>k) = ''
+    ))::int,
+    'orphaned', count(*) FILTER (
+      WHERE s.data ? '__orphaned' AND s.data->'__orphaned' <> '{}'::jsonb
+    )::int
+  )
+  FROM scoped s;
+$$;
+
+
+-- ============================================================
+-- 11. count_categories_with_orphans()  → JSONB[]
+-- ------------------------------------------------------------
+-- Categories holding items with orphaned values, for the dashboard's
+-- attention panel.
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.count_categories_with_orphans()
+RETURNS JSONB
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  SELECT COALESCE(jsonb_agg(x ORDER BY x.orphan_count DESC), '[]'::jsonb)
+  FROM (
+    SELECT i.category_id,
+           c.name AS category_name,
+           count(*)::int AS orphan_count
+    FROM public.items i
+    JOIN public.categories c ON c.id = i.category_id
+    WHERE i.data ? '__orphaned' AND i.data->'__orphaned' <> '{}'::jsonb
+    GROUP BY i.category_id, c.name
   ) x;
 $$;
