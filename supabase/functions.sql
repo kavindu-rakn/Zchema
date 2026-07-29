@@ -209,7 +209,7 @@ CREATE OR REPLACE FUNCTION public.get_category_tree()
 RETURNS JSONB
 LANGUAGE sql
 STABLE
-SECURITY INVOKER
+SECURITY INVOKER 
 SET search_path = ''
 AS $$
   SELECT COALESCE(
@@ -622,8 +622,9 @@ AS $$
              WHERE (f.elem->>'required')::boolean
            ), ARRAY[]::TEXT[]) AS required_keys
     FROM public.categories c
+    CROSS JOIN scope
     CROSS JOIN LATERAL jsonb_array_elements(public.get_effective_schema(c.id)) AS f(elem)
-    WHERE c.id = ANY((SELECT ids FROM scope))
+    WHERE c.id = ANY(scope.ids)
     GROUP BY c.id
   )
   SELECT COALESCE(jsonb_agg(x), '[]'::jsonb)
@@ -680,15 +681,17 @@ AS $$
              WHERE (f.elem->>'required')::boolean
            ), ARRAY[]::TEXT[]) AS required_keys
     FROM public.categories c
+    CROSS JOIN scope
     CROSS JOIN LATERAL jsonb_array_elements(public.get_effective_schema(c.id)) AS f(elem)
-    WHERE c.id = ANY((SELECT ids FROM scope))
+    WHERE c.id = ANY(scope.ids)
     GROUP BY c.id
   ),
   scoped AS (
     SELECT i.id, i.data, r.required_keys
     FROM public.items i
+    CROSS JOIN scope
     LEFT JOIN req r ON r.category_id = i.category_id
-    WHERE i.category_id = ANY((SELECT ids FROM scope))
+    WHERE i.category_id = ANY(scope.ids)
   )
   SELECT jsonb_build_object(
     'total', count(*)::int,
