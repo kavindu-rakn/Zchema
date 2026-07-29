@@ -309,7 +309,18 @@ $$;
 -- p_filters is a JSONB array of:
 --   { key, type, op, value, value2 }
 --     op: contains | eq | in | range | bool | is_empty | not_empty
+--
+-- p_stale_before (Phase 5) filters on items.schema_version, a real
+-- COLUMN rather than a key inside `data`, so it cannot be expressed as
+-- one of the p_filters entries. It backs the History tab's
+-- "12 items were written against v3 and older" link.
 -- ============================================================
+
+-- Adding a parameter to an existing function creates an OVERLOAD rather
+-- than replacing it, and two candidates would make every PostgREST call
+-- ambiguous. Drop the previous signature first.
+DROP FUNCTION IF EXISTS public.query_items(UUID, BOOLEAN, TEXT, TEXT, TEXT, JSONB, INT, INT, TEXT);
+
 CREATE OR REPLACE FUNCTION public.query_items(
   p_category_id     UUID,
   p_include_subtree BOOLEAN DEFAULT false,
@@ -321,7 +332,9 @@ CREATE OR REPLACE FUNCTION public.query_items(
   p_offset          INT     DEFAULT 0,
   -- 'incomplete' | 'orphaned' | NULL. Drives the one-click health
   -- filters in the Items tab header strip.
-  p_health          TEXT    DEFAULT NULL
+  p_health          TEXT    DEFAULT NULL,
+  -- Items written against a schema_version STRICTLY BELOW this.
+  p_stale_before    INT     DEFAULT NULL
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -450,6 +463,11 @@ BEGIN
       ' AND (i.data ? %L) AND i.data->%L <> %L::jsonb',
       '__orphaned', '__orphaned', '{}'
     );
+  END IF;
+
+  -- ── Stale-schema filter ───────────────────────────────────
+  IF p_stale_before IS NOT NULL THEN
+    where_sql := where_sql || format(' AND i.schema_version < %L::int', p_stale_before);
   END IF;
 
   -- ── Sort ──────────────────────────────────────────────────

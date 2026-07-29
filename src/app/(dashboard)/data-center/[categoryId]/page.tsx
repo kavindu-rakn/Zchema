@@ -12,7 +12,9 @@ import { CategoryActionsBar } from "@/components/data-center/category-actions-ba
 import { SchemaEditor } from "@/components/data-center/schema-editor";
 import { InheritanceFlow } from "@/components/data-center/inheritance-flow";
 import { ItemsTable } from "@/components/data-center/items-table";
+import { HistoryTimeline } from "@/components/data-center/history-timeline";
 import { getItemHealthCounts, queryItems } from "@/lib/data/items";
+import { getSchemaVersions, getStaleItems } from "@/lib/data/schema-versions";
 import { commonFields, decodeFilters } from "@/lib/items-table";
 import type { EffectiveField } from "@/lib/types";
 
@@ -36,17 +38,6 @@ export const dynamic = "force-dynamic";
 interface PageProps {
   params: Promise<{ categoryId: string }>;
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
-}
-
-function TabPlaceholder({ title, phase }: { title: string; phase: string }) {
-  return (
-    <Card className="border-dashed border-border bg-card/40">
-      <CardContent className="flex flex-col items-start gap-1 p-6">
-        <p className="text-sm font-medium text-foreground">{title}</p>
-        <p className="text-sm text-muted-foreground">Built in {phase}.</p>
-      </CardContent>
-    </Card>
-  );
 }
 
 export default async function CategoryDetailPage({ params, searchParams }: PageProps) {
@@ -114,6 +105,14 @@ export default async function CategoryDetailPage({ params, searchParams }: PageP
   const healthParam =
     query.health === "incomplete" || query.health === "orphaned" ? query.health : null;
 
+  // `?sv=<n>` — items still written against a schema older than n.
+  // A real column, not a key inside `data`, so it cannot ride along in
+  // the `f` filter string. Set by the History tab's stale-items strip.
+  const staleBefore =
+    typeof query.sv === "string" && Number.isFinite(Number(query.sv))
+      ? Number(query.sv)
+      : null;
+
   const itemHealth =
     tab === "items" ? await getItemHealthCounts(categoryId, includeSubtree) : undefined;
 
@@ -132,8 +131,15 @@ export default async function CategoryDetailPage({ params, searchParams }: PageP
           ),
           page: itemPage,
           pageSize: ITEMS_PER_PAGE,
+          staleBefore,
         })
       : { rows: [], total: 0 };
+
+  // History is its own round trip — only paid for when the tab is open.
+  const [versionHistory, staleItems] =
+    tab === "history"
+      ? await Promise.all([getSchemaVersions(categoryId), getStaleItems(categoryId)])
+      : [[], { currentVersion: 0, staleCount: 0, oldestVersion: null }];
 
   // get_category_ancestors returns root-first with the target last.
   const chain = ancestors.map((node) => ({ id: node.id, name: node.name }));
@@ -394,7 +400,16 @@ export default async function CategoryDetailPage({ params, searchParams }: PageP
           />
         )}
         {tab === "history" && (
-          <TabPlaceholder title="Schema version history" phase="Phase 5" />
+          <HistoryTimeline
+            categoryId={category.id}
+            categoryName={category.name}
+            versions={versionHistory}
+            currentSchema={effective}
+            staleCount={staleItems.staleCount}
+            oldestStaleVersion={staleItems.oldestVersion}
+            currentVersion={staleItems.currentVersion}
+            canEdit={canEdit}
+          />
         )}
       </div>
     </div>
