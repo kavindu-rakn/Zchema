@@ -344,6 +344,8 @@ export default async function CategoryDetailPage({ params, searchParams }: PageP
             page={itemPage}
             pageSize={ITEMS_PER_PAGE}
             canEdit={canEditItems}
+            canManageSchema={canEdit}
+            tree={tree}
           />
         )}
         {tab === "history" && (

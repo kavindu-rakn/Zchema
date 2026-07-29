@@ -31,8 +31,9 @@ import {
   formatCell,
 } from "@/lib/items-table";
 import { cn } from "@/lib/utils";
+import { BulkActionsBar } from "@/components/data-center/bulk-actions-bar";
 import type { ItemFilter, ItemRow } from "@/lib/data/items";
-import type { EffectiveField } from "@/lib/types";
+import type { CategoryNode, EffectiveField } from "@/lib/types";
 
 export function ItemsTable({
   categoryId,
@@ -43,6 +44,8 @@ export function ItemsTable({
   page,
   pageSize,
   canEdit,
+  canManageSchema = false,
+  tree,
   includeSubtree = false,
 }: {
   categoryId: string;
@@ -53,6 +56,9 @@ export function ItemsTable({
   page: number;
   pageSize: number;
   canEdit: boolean;
+  canManageSchema?: boolean;
+  /** Needed by the bulk "move to another category" picker. */
+  tree: CategoryNode[];
   includeSubtree?: boolean;
 }) {
   const router = useRouter();
@@ -62,6 +68,22 @@ export function ItemsTable({
   const [visible, setVisible] = useState<string[]>(() => defaultVisibleColumns(schema));
   const [openItem, setOpenItem] = useState<ItemRow | null>(null);
   const [creating, setCreating] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // Selection is per page of results; a new page means a new set.
+  useEffect(() => {
+    setSelected(new Set());
+  }, [rows]);
+
+  const toggleRow = (id: string) =>
+    setSelected((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const allSelected = rows.length > 0 && rows.every((row) => selected.has(row.id));
 
   const storageKey = `schemashift:columns:${categoryId}`;
 
@@ -168,6 +190,16 @@ export function ItemsTable({
         </div>
       </div>
 
+      {canEdit && selected.size > 0 && (
+        <BulkActionsBar
+          selected={[...selected]}
+          categoryId={categoryId}
+          schema={schema}
+          tree={tree}
+          onClear={() => setSelected(new Set())}
+        />
+      )}
+
       {/* Table */}
       {rows.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border px-6 py-12 text-center">
@@ -216,6 +248,20 @@ export function ItemsTable({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-card/50">
+                {canEdit && (
+                  <th data-slot="table-head" className="w-8 px-2 py-2">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all rows on this page"
+                      checked={allSelected}
+                      onChange={() =>
+                        setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.id)))
+                      }
+                      className="h-3.5 w-3.5 rounded border-border"
+                    />
+                  </th>
+                )}
+
                 {/* Pinned handle column */}
                 <th
                   data-slot="table-head"
@@ -289,8 +335,24 @@ export function ItemsTable({
                   <tr
                     key={row.id}
                     onClick={() => setOpenItem(row)}
-                    className="cursor-pointer border-b border-border/50 last:border-0 hover:bg-accent/40"
+                    className={cn(
+                      "cursor-pointer border-b border-border/50 last:border-0 hover:bg-accent/40",
+                      selected.has(row.id) && "bg-primary/5"
+                    )}
                   >
+                    {canEdit && (
+                      <td data-slot="table-cell" className="w-8 px-2 py-2">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${displayValueFor(schema, row)}`}
+                          checked={selected.has(row.id)}
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={() => toggleRow(row.id)}
+                          className="h-3.5 w-3.5 rounded border-border"
+                        />
+                      </td>
+                    )}
+
                     <td
                       data-slot="table-cell"
                       className="sticky left-0 z-10 max-w-52 truncate bg-background px-3 py-2 font-medium text-foreground"
@@ -393,6 +455,7 @@ export function ItemsTable({
         schema={schema}
         item={openItem}
         canEdit={canEdit}
+        canManageSchema={canManageSchema}
       />
     </div>
   );

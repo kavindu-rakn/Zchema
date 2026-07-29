@@ -465,3 +465,148 @@ BEGIN
   RETURN jsonb_build_object('total', COALESCE(total, 0), 'rows', COALESCE(rows_json, '[]'::jsonb));
 END;
 $$;
+
+
+-- ============================================================
+-- 8. move_items(p_item_ids, p_target_category_id)  → JSONB
+-- ------------------------------------------------------------
+-- Move items between categories, reconciling their data with the
+-- target's schema in ONE transaction.
+--
+-- An item's data was written against its old category's effective
+-- schema. Moving it means three things happen to each value:
+--   * key in BOTH schemas      → carried across untouched
+--   * key only in the SOURCE   → moved to data.__orphaned (never
+--                                deleted — Phase 5 surfaces it)
+--   * key only in the TARGET   → left empty; the item simply reads as
+--                                incomplete afterwards
+--
+-- Returns the counts so the caller can report what happened.
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.move_items(
+  p_item_ids           UUID[],
+  p_target_category_id UUID
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  target_keys    TEXT[];
+  src_keys       TEXT[];
+  it             RECORD;
+  k              TEXT;
+  new_data       JSONB;
+  orphan_obj     JSONB;
+  target_version INT;
+  moved          INT := 0;
+  carried        INT := 0;
+  orphaned       INT := 0;
+BEGIN
+  IF p_item_ids IS NULL OR array_length(p_item_ids, 1) IS NULL THEN
+    RETURN jsonb_build_object('moved', 0, 'carried', 0, 'orphaned', 0);
+  END IF;
+
+  SELECT COALESCE(array_agg(e->>'key'), ARRAY[]::TEXT[]) INTO target_keys
+  FROM jsonb_array_elements(public.get_effective_schema(p_target_category_id)) e;
+
+  SELECT COALESCE(MAX(version), 1) INTO target_version
+  FROM public.schema_versions WHERE category_id = p_target_category_id;
+
+  FOR it IN
+    SELECT i.id, i.category_id, i.data FROM public.items i WHERE i.id = ANY(p_item_ids)
+  LOOP
+    -- Skip items already in the target: nothing to reconcile.
+    CONTINUE WHEN it.category_id = p_target_category_id;
+
+    SELECT COALESCE(array_agg(e->>'key'), ARRAY[]::TEXT[]) INTO src_keys
+    FROM jsonb_array_elements(public.get_effective_schema(it.category_id)) e;
+
+    new_data   := '{}'::jsonb;
+    orphan_obj := COALESCE(it.data->'__orphaned', '{}'::jsonb);
+
+    FOREACH k IN ARRAY src_keys LOOP
+      CONTINUE WHEN NOT (it.data ? k);
+      IF k = ANY(target_keys) THEN
+        new_data := new_data || jsonb_build_object(k, it.data->k);
+        carried  := carried + 1;
+      ELSE
+        orphan_obj := orphan_obj || jsonb_build_object(k, it.data->k);
+        orphaned   := orphaned + 1;
+      END IF;
+    END LOOP;
+
+    IF orphan_obj <> '{}'::jsonb THEN
+      new_data := new_data || jsonb_build_object('__orphaned', orphan_obj);
+    END IF;
+
+    UPDATE public.items
+       SET category_id    = p_target_category_id,
+           data           = new_data,
+           schema_version = target_version
+     WHERE id = it.id;
+
+    moved := moved + 1;
+  END LOOP;
+
+  RETURN jsonb_build_object('moved', moved, 'carried', carried, 'orphaned', orphaned);
+END;
+$$;
+
+
+-- ============================================================
+-- 9. get_incomplete_items(p_category_id, p_include_subtree)
+-- ------------------------------------------------------------
+-- Items missing a value for a field their effective schema marks
+-- required. In SQL so the dashboard can ask this across the tree
+-- cheaply, resolving each schema once per category rather than once
+-- per item.
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.get_incomplete_items(
+  p_category_id     UUID,
+  p_include_subtree BOOLEAN DEFAULT false
+)
+RETURNS JSONB
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  WITH scope AS (
+    SELECT CASE
+      WHEN p_include_subtree
+        THEN (SELECT array_agg(s.id) FROM public.get_category_subtree(p_category_id) s)
+      ELSE ARRAY[p_category_id]
+    END AS ids
+  ),
+  required_by_category AS (
+    SELECT c.id AS category_id,
+           COALESCE(array_agg(f.elem->>'key') FILTER (
+             WHERE (f.elem->>'required')::boolean
+           ), ARRAY[]::TEXT[]) AS required_keys
+    FROM public.categories c
+    CROSS JOIN LATERAL jsonb_array_elements(public.get_effective_schema(c.id)) AS f(elem)
+    WHERE c.id = ANY((SELECT ids FROM scope))
+    GROUP BY c.id
+  )
+  SELECT COALESCE(jsonb_agg(x), '[]'::jsonb)
+  FROM (
+    SELECT i.id,
+           i.category_id,
+           COALESCE(array_to_json(ARRAY(
+             SELECT k FROM unnest(r.required_keys) AS k
+             WHERE NOT (i.data ? k)
+                OR i.data->>k IS NULL
+                OR btrim(i.data->>k) = ''
+           ))::jsonb, '[]'::jsonb) AS missing_required
+    FROM public.items i
+    JOIN required_by_category r ON r.category_id = i.category_id
+    WHERE EXISTS (
+      SELECT 1 FROM unnest(r.required_keys) AS k
+      WHERE NOT (i.data ? k)
+         OR i.data->>k IS NULL
+         OR btrim(i.data->>k) = ''
+    )
+  ) x;
+$$;

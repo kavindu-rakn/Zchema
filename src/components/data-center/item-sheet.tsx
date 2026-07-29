@@ -22,8 +22,10 @@ import { DynamicForm } from "@/components/data-center/dynamic-form";
 import {
   createItem,
   deleteItem,
+  discardOrphanedValue,
+  restoreOrphanedValue,
   updateItem,
-} from "@/app/(dashboard)/data-center/item-actions";
+} from "@/app/(dashboard)/data-center/[categoryId]/items/actions";
 import type { ItemRow } from "@/lib/data/items";
 import type { EffectiveField } from "@/lib/types";
 
@@ -35,6 +37,7 @@ export function ItemSheet({
   schema,
   item,
   canEdit,
+  canManageSchema = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -43,6 +46,8 @@ export function ItemSheet({
   schema: EffectiveField[];
   item: ItemRow | null;
   canEdit: boolean;
+  /** Restoring an orphan recreates a FIELD, so it needs SCHEMA_ADMIN. */
+  canManageSchema?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -60,6 +65,32 @@ export function ItemSheet({
       }
       toast.success(isEdit ? "Item saved" : "Item created");
       onOpenChange(false);
+      router.refresh();
+    });
+  };
+
+  const restoreOrphan = (key: string) => {
+    if (!item) return;
+    startTransition(async () => {
+      const result = await restoreOrphanedValue(item.id, item.category_id, key);
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(`Restored “${key}” as a field on this category`);
+      router.refresh();
+    });
+  };
+
+  const discardOrphan = (key: string) => {
+    if (!item) return;
+    startTransition(async () => {
+      const result = await discardOrphanedValue(item.id, item.category_id, key);
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(`Discarded “${key}”`);
       router.refresh();
     });
   };
@@ -104,6 +135,9 @@ export function ItemSheet({
             submitLabel={isEdit ? "Save changes" : "Create item"}
             onSubmit={canEdit ? submit : undefined}
             onCancel={() => onOpenChange(false)}
+            canRestoreOrphans={canManageSchema && Boolean(item)}
+            onRestoreOrphan={restoreOrphan}
+            onDiscardOrphan={discardOrphan}
           />
         </div>
 
