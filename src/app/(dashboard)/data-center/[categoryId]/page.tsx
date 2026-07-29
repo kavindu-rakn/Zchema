@@ -11,6 +11,12 @@ import {
 import { CategoryActionsBar } from "@/components/data-center/category-actions-bar";
 import { SchemaEditor } from "@/components/data-center/schema-editor";
 import { InheritanceFlow } from "@/components/data-center/inheritance-flow";
+import { ItemsTable } from "@/components/data-center/items-table";
+import { getItemHealthCounts, queryItems } from "@/lib/data/items";
+import { commonFields, decodeFilters } from "@/lib/items-table";
+import type { EffectiveField } from "@/lib/types";
+
+const ITEMS_PER_PAGE = 50;
 import { buildCategoryTree } from "@/lib/schema";
 import { getCategoryTreeFlat } from "@/lib/data/categories";
 import { getCurrentRole } from "@/lib/auth";
@@ -68,6 +74,66 @@ export default async function CategoryDetailPage({ params, searchParams }: PageP
 
   const tree = buildCategoryTree(flatTree);
   const canEdit = role === "SCHEMA_ADMIN";
+  // Item data is editable by DATA_EDITOR too — schema is not.
+  const canEditItems = role === "SCHEMA_ADMIN" || role === "DATA_EDITOR";
+
+  // Items are sorted, filtered and paged in the database, so the URL
+  // state has to be read here rather than in the client component.
+  const itemPage = Math.max(1, Number.parseInt(String(query.page ?? "1"), 10) || 1);
+  const sortParam = typeof query.sort === "string" ? query.sort : null;
+
+  // A parent node holding no items of its own reads as "0 items" even
+  // though its children hold dozens — which looks like a bug. Default
+  // such nodes to the subtree view; an explicit ?scope= always wins.
+  const scopeParam = typeof query.scope === "string" ? query.scope : null;
+  const includeSubtree =
+    scopeParam === "subtree"
+      ? true
+      : scopeParam === "single"
+        ? false
+        : children.length > 0 && directItems === 0;
+
+  // Across a subtree the schemas differ, so the only columns that can
+  // honestly be shown are the ones EVERY item is guaranteed to have —
+  // which in practice are the inherited ones.
+  const subtreeSchemas =
+    tab === "items" && includeSubtree
+      ? await Promise.all(subtreeIds.map((id) => getEffectiveSchema(id)))
+      : [];
+
+  const schemasByCategory: Record<string, EffectiveField[]> = {};
+  if (tab === "items" && includeSubtree) {
+    subtreeIds.forEach((id, index) => {
+      schemasByCategory[id] = subtreeSchemas[index] ?? [];
+    });
+  }
+
+  const tableSchema =
+    tab === "items" && includeSubtree ? commonFields(subtreeSchemas) : effective;
+
+  const healthParam =
+    query.health === "incomplete" || query.health === "orphaned" ? query.health : null;
+
+  const itemHealth =
+    tab === "items" ? await getItemHealthCounts(categoryId, includeSubtree) : undefined;
+
+  const itemQuery =
+    tab === "items"
+      ? await queryItems({
+          categoryId,
+          includeSubtree,
+          health: healthParam,
+          sortKey: sortParam,
+          sortType: typeof query.type === "string" ? query.type : "string",
+          sortDir: query.dir === "desc" ? "desc" : "asc",
+          filters: decodeFilters(
+            typeof query.f === "string" ? query.f : null,
+            tableSchema
+          ),
+          page: itemPage,
+          pageSize: ITEMS_PER_PAGE,
+        })
+      : { rows: [], total: 0 };
 
   // get_category_ancestors returns root-first with the target last.
   const chain = ancestors.map((node) => ({ id: node.id, name: node.name }));
@@ -307,7 +373,26 @@ export default async function CategoryDetailPage({ params, searchParams }: PageP
             canEdit={canEdit}
           />
         )}
-        {tab === "items" && <TabPlaceholder title="Items workspace" phase="Phase 4" />}
+        {tab === "items" && (
+          <ItemsTable
+            categoryId={category.id}
+            categoryName={category.name}
+            schema={tableSchema}
+            fullSchema={effective}
+            schemasByCategory={schemasByCategory}
+            rows={itemQuery.rows}
+            total={itemQuery.total}
+            page={itemPage}
+            pageSize={ITEMS_PER_PAGE}
+            canEdit={canEditItems}
+            canManageSchema={canEdit}
+            tree={tree}
+            includeSubtree={includeSubtree}
+            hasChildren={children.length > 0}
+            subtreeCategoryCount={subtreeIds.length}
+            health={itemHealth}
+          />
+        )}
         {tab === "history" && (
           <TabPlaceholder title="Schema version history" phase="Phase 5" />
         )}

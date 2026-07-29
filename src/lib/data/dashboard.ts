@@ -18,7 +18,7 @@ export interface DashboardShape {
 }
 
 export interface AttentionItem {
-  kind: "no_items" | "missing_required" | "stale_version" | "dead_node";
+  kind: "no_items" | "missing_required" | "orphaned_data" | "stale_version" | "dead_node";
   categoryId: string;
   categoryName: string;
   detail: string;
@@ -64,7 +64,8 @@ export async function getDashboardData(): Promise<DashboardData> {
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-  const [tree, changesRes, recentVersionsRes, recentItemsRes, missingRes] = await Promise.all([
+  const [tree, changesRes, recentVersionsRes, recentItemsRes, missingRes, orphanRes] =
+    await Promise.all([
     getCategoryTreeFlat(),
     supabase
       .from("schema_versions")
@@ -80,8 +81,9 @@ export async function getDashboardData(): Promise<DashboardData> {
       .select("id, category_id, data, created_at")
       .order("created_at", { ascending: false })
       .limit(5),
-    supabase.rpc("get_items_missing_required"),
-  ]);
+      supabase.rpc("get_items_missing_required"),
+      supabase.rpc("count_categories_with_orphans"),
+    ]);
 
   const byId = new Map(tree.map((node) => [node.id, node]));
   const nameOf = (id: string) => byId.get(id)?.name ?? "Unknown category";
@@ -142,7 +144,23 @@ export async function getDashboardData(): Promise<DashboardData> {
       categoryId: row.category_id,
       categoryName: row.category_name,
       detail: `${row.missing_count} item${row.missing_count === 1 ? "" : "s"} missing a required value`,
-      href: `/data-center/${row.category_id}?tab=items`,
+      // Land on the filtered view, ready for the bulk fix.
+      href: `/data-center/${row.category_id}?tab=items&health=incomplete`,
+    });
+  }
+
+  const withOrphans = (orphanRes.data ?? []) as {
+    category_id: string;
+    category_name: string;
+    orphan_count: number;
+  }[];
+  for (const row of withOrphans) {
+    attention.push({
+      kind: "orphaned_data",
+      categoryId: row.category_id,
+      categoryName: row.category_name,
+      detail: `${row.orphan_count} item${row.orphan_count === 1 ? "" : "s"} hold values from removed fields`,
+      href: `/data-center/${row.category_id}?tab=items&health=orphaned`,
     });
   }
 
