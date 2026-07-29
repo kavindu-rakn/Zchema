@@ -10,6 +10,7 @@ import {
 } from "@/components/data-center/detail-tabs";
 import { CategoryActionsBar } from "@/components/data-center/category-actions-bar";
 import { SchemaEditor } from "@/components/data-center/schema-editor";
+import { InheritanceFlow } from "@/components/data-center/inheritance-flow";
 import { buildCategoryTree } from "@/lib/schema";
 import { getCategoryTreeFlat } from "@/lib/data/categories";
 import { getCurrentRole } from "@/lib/auth";
@@ -113,6 +114,28 @@ export default async function CategoryDetailPage({ params, searchParams }: PageP
       <div className="flex-1 p-6">
         {tab === "overview" && (
           <div className="space-y-6">
+            {/* How this category accumulates its schema — the clearest
+                single picture of what the product does, so it leads. */}
+            {chain.length > 1 && (
+              <Card className="border-border/50 bg-card">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-foreground">
+                    Where these {effective.length} fields come from
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <InheritanceFlow
+                    chain={ancestors.map((node) => ({
+                      id: node.id,
+                      name: node.name,
+                      depth: node.depth,
+                    }))}
+                    effective={effective}
+                  />
+                </CardContent>
+              </Card>
+            )}
+
             {/* Summary */}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Card className="border-border/50 bg-card">

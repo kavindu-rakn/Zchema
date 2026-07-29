@@ -38,6 +38,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { DynamicForm } from "@/components/data-center/dynamic-form";
 import { OptionsEditor } from "@/components/data-center/options-editor";
+import { FieldProvenance } from "@/components/data-center/field-provenance";
 import { updateCategorySchema } from "@/app/(dashboard)/data-center/actions";
 import { diffSchemas, resolveEffectiveSchema, slugify, validateFieldKey } from "@/lib/schema";
 import { cn } from "@/lib/utils";
@@ -346,10 +347,20 @@ export function SchemaEditor({
                                     aria-hidden
                                   />
                                 )}
-                                <code className="shrink-0 text-xs text-foreground">{field.key}</code>
-                                <span className="truncate text-xs text-muted-foreground">
-                                  {field.label}
-                                </span>
+                                <FieldProvenance chain={chain} fieldKey={field.key}>
+                                  <button
+                                    type="button"
+                                    title="Where did this come from?"
+                                    className="flex min-w-0 items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                  >
+                                    <code className="shrink-0 text-xs text-foreground underline decoration-dotted underline-offset-2">
+                                      {field.key}
+                                    </code>
+                                    <span className="truncate text-xs text-muted-foreground">
+                                      {field.label}
+                                    </span>
+                                  </button>
+                                </FieldProvenance>
                                 <span className="shrink-0 text-[11px] text-muted-foreground">
                                   {field.type}
                                 </span>
