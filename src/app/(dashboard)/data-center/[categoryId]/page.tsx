@@ -13,7 +13,8 @@ import { SchemaEditor } from "@/components/data-center/schema-editor";
 import { InheritanceFlow } from "@/components/data-center/inheritance-flow";
 import { ItemsTable } from "@/components/data-center/items-table";
 import { queryItems } from "@/lib/data/items";
-import { decodeFilters } from "@/lib/items-table";
+import { commonFields, decodeFilters } from "@/lib/items-table";
+import type { EffectiveField } from "@/lib/types";
 
 const ITEMS_PER_PAGE = 50;
 import { buildCategoryTree } from "@/lib/schema";
@@ -80,16 +81,47 @@ export default async function CategoryDetailPage({ params, searchParams }: PageP
   // state has to be read here rather than in the client component.
   const itemPage = Math.max(1, Number.parseInt(String(query.page ?? "1"), 10) || 1);
   const sortParam = typeof query.sort === "string" ? query.sort : null;
+
+  // A parent node holding no items of its own reads as "0 items" even
+  // though its children hold dozens — which looks like a bug. Default
+  // such nodes to the subtree view; an explicit ?scope= always wins.
+  const scopeParam = typeof query.scope === "string" ? query.scope : null;
+  const includeSubtree =
+    scopeParam === "subtree"
+      ? true
+      : scopeParam === "single"
+        ? false
+        : children.length > 0 && directItems === 0;
+
+  // Across a subtree the schemas differ, so the only columns that can
+  // honestly be shown are the ones EVERY item is guaranteed to have —
+  // which in practice are the inherited ones.
+  const subtreeSchemas =
+    tab === "items" && includeSubtree
+      ? await Promise.all(subtreeIds.map((id) => getEffectiveSchema(id)))
+      : [];
+
+  const schemasByCategory: Record<string, EffectiveField[]> = {};
+  if (tab === "items" && includeSubtree) {
+    subtreeIds.forEach((id, index) => {
+      schemasByCategory[id] = subtreeSchemas[index] ?? [];
+    });
+  }
+
+  const tableSchema =
+    tab === "items" && includeSubtree ? commonFields(subtreeSchemas) : effective;
+
   const itemQuery =
     tab === "items"
       ? await queryItems({
           categoryId,
+          includeSubtree,
           sortKey: sortParam,
           sortType: typeof query.type === "string" ? query.type : "string",
           sortDir: query.dir === "desc" ? "desc" : "asc",
           filters: decodeFilters(
             typeof query.f === "string" ? query.f : null,
-            effective
+            tableSchema
           ),
           page: itemPage,
           pageSize: ITEMS_PER_PAGE,
@@ -338,7 +370,9 @@ export default async function CategoryDetailPage({ params, searchParams }: PageP
           <ItemsTable
             categoryId={category.id}
             categoryName={category.name}
-            schema={effective}
+            schema={tableSchema}
+            fullSchema={effective}
+            schemasByCategory={schemasByCategory}
             rows={itemQuery.rows}
             total={itemQuery.total}
             page={itemPage}
@@ -346,6 +380,9 @@ export default async function CategoryDetailPage({ params, searchParams }: PageP
             canEdit={canEditItems}
             canManageSchema={canEdit}
             tree={tree}
+            includeSubtree={includeSubtree}
+            hasChildren={children.length > 0}
+            subtreeCategoryCount={subtreeIds.length}
           />
         )}
         {tab === "history" && (

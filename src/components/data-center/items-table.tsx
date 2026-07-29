@@ -14,6 +14,7 @@ import {
   ArrowUp,
   ChevronLeft,
   ChevronRight,
+  Info,
   Plus,
   Upload,
 } from "lucide-react";
@@ -47,9 +48,14 @@ export function ItemsTable({
   canManageSchema = false,
   tree,
   includeSubtree = false,
+  fullSchema,
+  schemasByCategory = {},
+  hasChildren = false,
+  subtreeCategoryCount = 1,
 }: {
   categoryId: string;
   categoryName: string;
+  /** Columns to render — the subtree intersection when scoped wide. */
   schema: EffectiveField[];
   rows: ItemRow[];
   total: number;
@@ -60,6 +66,12 @@ export function ItemsTable({
   /** Needed by the bulk "move to another category" picker. */
   tree: CategoryNode[];
   includeSubtree?: boolean;
+  /** This category's own full schema, for editing its own items. */
+  fullSchema?: EffectiveField[];
+  /** Per-category schemas, so a subtree row edits against its OWN. */
+  schemasByCategory?: Record<string, EffectiveField[]>;
+  hasChildren?: boolean;
+  subtreeCategoryCount?: number;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -169,10 +181,46 @@ export function ItemsTable({
     <div className="space-y-3">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground">
-          {total.toLocaleString()} item{total === 1 ? "" : "s"}
-          {hasFilters && <> matching {filters.length} filter{filters.length === 1 ? "" : "s"}</>}
-        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-xs text-muted-foreground">
+            {total.toLocaleString()} item{total === 1 ? "" : "s"}
+            {hasFilters && <> matching {filters.length} filter{filters.length === 1 ? "" : "s"}</>}
+          </p>
+
+          {/* Scope toggle — only meaningful when there is a subtree */}
+          {hasChildren && (
+            <div
+              role="radiogroup"
+              aria-label="Item scope"
+              className="flex rounded-md border border-border p-0.5"
+            >
+              {[
+                { label: "This category", value: "single" },
+                { label: "Include subcategories", value: "subtree" },
+              ].map((option) => {
+                const active =
+                  option.value === "subtree" ? includeSubtree : !includeSubtree;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setParams({ scope: option.value, page: null, f: null })}
+                    className={cn(
+                      "rounded px-2 py-0.5 text-xs transition-colors",
+                      active
+                        ? "bg-primary/15 font-medium text-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
         <div className="flex flex-wrap items-center gap-2">
           {hasFilters && (
@@ -189,6 +237,19 @@ export function ItemsTable({
           )}
         </div>
       </div>
+
+      {/* Honest account of why the columns narrowed */}
+      {includeSubtree && (
+        <p className="flex items-start gap-1.5 rounded-md border border-border bg-card/40 px-3 py-2 text-xs text-muted-foreground">
+          <Info className="mt-0.5 h-3 w-3 shrink-0" />
+          <span>
+            Showing {schema.length} field{schema.length === 1 ? "" : "s"} common to all{" "}
+            {subtreeCategoryCount} categor{subtreeCategoryCount === 1 ? "y" : "ies"} in this
+            subtree. Switch to <strong className="text-foreground">This category</strong> to see
+            its full schema.
+          </span>
+        </p>
+      )}
 
       {canEdit && selected.size > 0 && (
         <BulkActionsBar
@@ -328,7 +389,13 @@ export function ItemsTable({
 
             <tbody>
               {rows.map((row) => {
-                const completeness = completenessOf(schema, row.data);
+                // Completeness must be judged against the row's OWN
+                // schema. Measuring against the subtree intersection
+                // would report "3/3 complete" for an item missing four
+                // of its own category's fields.
+                const rowSchema =
+                  schemasByCategory[row.category_id] ?? fullSchema ?? schema;
+                const completeness = completenessOf(rowSchema, row.data);
                 const incomplete = completeness.missingRequired.length > 0;
 
                 return (
@@ -441,7 +508,11 @@ export function ItemsTable({
         </div>
       )}
 
-      {/* Row detail / create */}
+      {/* Row detail / create.
+          In the subtree view the table shows only the common columns,
+          but editing must offer the item's OWN category's full schema —
+          otherwise opening a Gaming Laptop from the Electronics view
+          would silently hide half its fields. */}
       <ItemSheet
         open={Boolean(openItem) || creating}
         onOpenChange={(next) => {
@@ -452,7 +523,11 @@ export function ItemsTable({
         }}
         categoryId={openItem?.category_id ?? categoryId}
         categoryName={openItem?.category_name ?? categoryName}
-        schema={schema}
+        schema={
+          openItem
+            ? schemasByCategory[openItem.category_id] ?? fullSchema ?? schema
+            : fullSchema ?? schema
+        }
         item={openItem}
         canEdit={canEdit}
         canManageSchema={canManageSchema}
