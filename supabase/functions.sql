@@ -290,3 +290,178 @@ AS $$
     GROUP BY r.category_id, r.category_name
   ) x;
 $$;
+
+
+-- ============================================================
+-- 7. query_items(...)  → JSONB { total, rows }
+-- ------------------------------------------------------------
+-- Server-side sort, filter and pagination for the items table.
+--
+-- WHY THIS IS SQL AND NOT A POSTGREST QUERY
+-- Sorting `data->>'ram_gb'` as text puts 8 after 16. Correct ordering
+-- needs a cast chosen by the field's type, which PostgREST cannot
+-- express — and sorting only the current page is wrong anyway.
+--
+-- SAFETY: p_sort_key and every filter key are validated against the
+-- field-key grammar before being interpolated, and all values go
+-- through %L. A key that does not match is ignored rather than run.
+--
+-- p_filters is a JSONB array of:
+--   { key, type, op, value, value2 }
+--     op: contains | eq | in | range | bool | is_empty | not_empty
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.query_items(
+  p_category_id     UUID,
+  p_include_subtree BOOLEAN DEFAULT false,
+  p_sort_key        TEXT    DEFAULT NULL,
+  p_sort_type       TEXT    DEFAULT 'string',
+  p_sort_dir        TEXT    DEFAULT 'asc',
+  p_filters         JSONB   DEFAULT '[]'::jsonb,
+  p_limit           INT     DEFAULT 50,
+  p_offset          INT     DEFAULT 0
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  key_re     CONSTANT TEXT := '^[a-z][a-z0-9_]*$';
+  where_sql  TEXT := 'TRUE';
+  order_sql  TEXT;
+  dir        TEXT;
+  flt        JSONB;
+  fkey       TEXT;
+  fop        TEXT;
+  ftype      TEXT;
+  fval       TEXT;
+  fval2      TEXT;
+  cast_expr  TEXT;
+  scope_sql  TEXT;
+  total      INT;
+  rows_json  JSONB;
+BEGIN
+  dir := CASE WHEN lower(COALESCE(p_sort_dir, 'asc')) = 'desc' THEN 'DESC' ELSE 'ASC' END;
+
+  -- ── Scope: this category, or the whole subtree ────────────
+  IF p_include_subtree THEN
+    scope_sql := format(
+      'i.category_id IN (SELECT s.id FROM public.get_category_subtree(%L::uuid) s)',
+      p_category_id
+    );
+  ELSE
+    scope_sql := format('i.category_id = %L::uuid', p_category_id);
+  END IF;
+
+  -- ── Filters ───────────────────────────────────────────────
+  FOR flt IN SELECT value FROM jsonb_array_elements(COALESCE(p_filters, '[]'::jsonb))
+  LOOP
+    fkey  := flt->>'key';
+    fop   := COALESCE(flt->>'op', 'contains');
+    ftype := COALESCE(flt->>'type', 'string');
+    fval  := flt->>'value';
+    fval2 := flt->>'value2';
+
+    CONTINUE WHEN fkey IS NULL OR fkey !~ key_re;
+
+    IF fop = 'is_empty' THEN
+      where_sql := where_sql || format(
+        ' AND (NOT (i.data ? %L) OR i.data->>%L IS NULL OR btrim(i.data->>%L) = %L)',
+        fkey, fkey, fkey, ''
+      );
+
+    ELSIF fop = 'not_empty' THEN
+      where_sql := where_sql || format(
+        ' AND (i.data ? %L AND i.data->>%L IS NOT NULL AND btrim(i.data->>%L) <> %L)',
+        fkey, fkey, fkey, ''
+      );
+
+    ELSIF fval IS NULL OR fval = '' THEN
+      CONTINUE;
+
+    ELSIF fop = 'contains' THEN
+      where_sql := where_sql || format(
+        ' AND i.data->>%L ILIKE %L', fkey, '%' || fval || '%'
+      );
+
+    ELSIF fop = 'eq' THEN
+      where_sql := where_sql || format(' AND i.data->>%L = %L', fkey, fval);
+
+    ELSIF fop = 'bool' THEN
+      where_sql := where_sql || format(
+        ' AND (i.data->>%L)::boolean = %L::boolean', fkey, fval
+      );
+
+    ELSIF fop = 'in' THEN
+      -- `value` is a comma-separated list of allowed values.
+      where_sql := where_sql || format(
+        ' AND i.data->>%L = ANY (string_to_array(%L, %L))', fkey, fval, ','
+      );
+
+    ELSIF fop = 'range' THEN
+      -- Guard the cast: a non-numeric stray value would abort the query.
+      where_sql := where_sql || format(
+        ' AND (i.data->>%L) ~ %L', fkey, '^-?[0-9]+(\.[0-9]+)?$'
+      );
+      IF fval IS NOT NULL AND fval <> '' THEN
+        where_sql := where_sql || format(
+          ' AND (i.data->>%L)::numeric >= %L::numeric', fkey, fval
+        );
+      END IF;
+      IF fval2 IS NOT NULL AND fval2 <> '' THEN
+        where_sql := where_sql || format(
+          ' AND (i.data->>%L)::numeric <= %L::numeric', fkey, fval2
+        );
+      END IF;
+    END IF;
+  END LOOP;
+
+  -- ── Sort ──────────────────────────────────────────────────
+  IF p_sort_key IS NULL OR p_sort_key = '' THEN
+    order_sql := 'i.created_at DESC';
+  ELSIF p_sort_key = 'created_at' OR p_sort_key = 'updated_at' THEN
+    order_sql := format('i.%I %s', p_sort_key, dir);
+  ELSIF p_sort_key !~ key_re THEN
+    order_sql := 'i.created_at DESC';
+  ELSE
+    -- The cast is what makes 8 sort before 16, and 2024-02 before
+    -- 2024-10. NULLIF+regex keeps a stray non-numeric value from
+    -- aborting the whole query.
+    cast_expr := CASE p_sort_type
+      WHEN 'number' THEN format(
+        '(CASE WHEN i.data->>%L ~ %L THEN (i.data->>%L)::numeric END)',
+        p_sort_key, '^-?[0-9]+(\.[0-9]+)?$', p_sort_key
+      )
+      WHEN 'date' THEN format(
+        '(CASE WHEN i.data->>%L ~ %L THEN (i.data->>%L)::date END)',
+        p_sort_key, '^\d{4}-\d{2}-\d{2}', p_sort_key
+      )
+      WHEN 'boolean' THEN format(
+        '(CASE WHEN i.data->>%L IN (%L,%L) THEN (i.data->>%L)::boolean END)',
+        p_sort_key, 'true', 'false', p_sort_key
+      )
+      ELSE format('lower(i.data->>%L)', p_sort_key)
+    END;
+    order_sql := format('%s %s NULLS LAST, i.created_at DESC', cast_expr, dir);
+  END IF;
+
+  -- ── Count, then page ──────────────────────────────────────
+  EXECUTE format(
+    'SELECT count(*)::int FROM public.items i WHERE %s AND %s', scope_sql, where_sql
+  ) INTO total;
+
+  EXECUTE format(
+    'SELECT COALESCE(jsonb_agg(r ORDER BY r.ord), %L::jsonb) FROM ('
+    || 'SELECT row_number() OVER (ORDER BY %s) AS ord, i.id, i.category_id, i.data, '
+    || 'i.schema_version, i.created_at, i.updated_at, c.name AS category_name '
+    || 'FROM public.items i JOIN public.categories c ON c.id = i.category_id '
+    || 'WHERE %s AND %s ORDER BY %s LIMIT %s OFFSET %s'
+    || ') r',
+    '[]', order_sql, scope_sql, where_sql, order_sql,
+    GREATEST(COALESCE(p_limit, 50), 1), GREATEST(COALESCE(p_offset, 0), 0)
+  ) INTO rows_json;
+
+  RETURN jsonb_build_object('total', COALESCE(total, 0), 'rows', COALESCE(rows_json, '[]'::jsonb));
+END;
+$$;
