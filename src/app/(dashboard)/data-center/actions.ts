@@ -11,7 +11,14 @@ import { createClient } from "@/utils/supabase/server";
 import { requireSchemaAdmin } from "@/lib/auth";
 import { actionError } from "@/lib/action-result";
 import { validateFieldKey } from "@/lib/schema";
-import type { ActionResult, FieldOverride, SchemaField } from "@/lib/types";
+import type {
+  ActionResult,
+  FieldOverride,
+  Remediation,
+  SchemaApplyResult,
+  SchemaField,
+  SchemaImpact,
+} from "@/lib/types";
 
 function revalidateCategoryViews() {
   // `layout` so the Data Center's persistent tree rail refreshes too —
@@ -187,6 +194,115 @@ export async function updateCategorySchema(
     return { ok: true, data: null };
   } catch (error) {
     return actionError(error, "Could not save the schema.");
+  }
+}
+
+// ── Impact analysis (Phase 5) ────────────────────────────────
+
+/**
+ * What a proposed schema change would do to live item data.
+ *
+ * READ-ONLY, and called on every keystroke (debounced) by the schema
+ * editor's severity badge, so it stays a single RPC round trip. The
+ * measurement has to happen in SQL: deciding whether 48 stored values
+ * survive a type cast by shipping them all to the client and casting
+ * them in JavaScript would be both slow and a different answer from
+ * the one Postgres will give when the change is applied.
+ */
+export async function analyzeSchemaChange(
+  categoryId: string,
+  input: { own_fields: SchemaField[]; overrides: Record<string, FieldOverride> }
+): Promise<ActionResult<SchemaImpact>> {
+  try {
+    await requireSchemaAdmin();
+
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("analyze_schema_change", {
+      p_category_id: categoryId,
+      p_new_own_fields: input.own_fields,
+      p_new_overrides: input.overrides,
+    });
+
+    if (error) throw new Error(error.message);
+    return { ok: true, data: data as SchemaImpact };
+  } catch (error) {
+    return actionError(error, "Could not analyse the impact of this change.");
+  }
+}
+
+/**
+ * Apply a schema change with an explicit remediation per destructive
+ * consequence.
+ *
+ * The whole migration — category rewrite, item remediation, version
+ * rows for the category and every descendant — happens inside one
+ * database function, so it is one transaction. Splitting it across
+ * several PostgREST calls would make a partial migration possible.
+ *
+ * Note this does NOT go through updateCategorySchema: that path writes
+ * the category and nothing else, which is exactly the silent data loss
+ * this phase exists to prevent.
+ */
+export async function applySchemaChange(
+  categoryId: string,
+  input: {
+    own_fields: SchemaField[];
+    overrides: Record<string, FieldOverride>;
+    /** Keyed by `<field_key>` or `<field_key>:<kind>`. */
+    remediations?: Record<string, Remediation>;
+  }
+): Promise<ActionResult<SchemaApplyResult>> {
+  try {
+    const profile = await requireSchemaAdmin();
+
+    const fieldError = validateOwnFields(input.own_fields);
+    if (fieldError) return { ok: false, error: fieldError };
+
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("apply_schema_change", {
+      p_category_id: categoryId,
+      p_new_own_fields: input.own_fields,
+      p_new_overrides: input.overrides,
+      p_remediations: input.remediations ?? {},
+      p_changed_by: profile.id,
+    });
+
+    if (error) throw new Error(error.message);
+
+    revalidateCategoryViews();
+    return { ok: true, data: data as SchemaApplyResult };
+  } catch (error) {
+    return actionError(error, "Could not apply the schema change.");
+  }
+}
+
+/**
+ * Restore a recorded version's authored schema.
+ *
+ * Writes a NEW forward version rather than deleting the ones after it —
+ * an audit trail that can be edited is not an audit trail. Item data is
+ * not reverted; the caller must say so before invoking this.
+ */
+export async function rollbackSchemaVersion(
+  categoryId: string,
+  targetVersion: number
+): Promise<ActionResult<SchemaApplyResult>> {
+  try {
+    const profile = await requireSchemaAdmin();
+
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("rollback_schema_version", {
+      p_category_id: categoryId,
+      p_target_version: targetVersion,
+      p_changed_by: profile.id,
+    });
+
+    if (error) throw new Error(error.message);
+
+    revalidateCategoryViews();
+    return { ok: true, data: data as SchemaApplyResult };
+  } catch (error) {
+    return actionError(error, "Could not restore that version.");
   }
 }
 

@@ -15,10 +15,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Reorder, useDragControls } from "framer-motion";
 import {
+  AlertTriangle,
   ChevronDown,
   CornerDownRight,
   GripVertical,
-  Info,
   Layers,
   Lock,
   Plus,
@@ -28,27 +28,27 @@ import {
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { DynamicForm } from "@/components/data-center/dynamic-form";
 import { OptionsEditor } from "@/components/data-center/options-editor";
 import { FieldProvenance } from "@/components/data-center/field-provenance";
+import { ImpactDialog } from "@/components/data-center/impact-dialog";
 import { SaveAsBlueprint } from "@/components/blueprints/save-as-blueprint";
-import { updateCategorySchema } from "@/app/(dashboard)/data-center/actions";
-import { diffSchemas, resolveEffectiveSchema, slugify, validateFieldKey } from "@/lib/schema";
+import {
+  analyzeSchemaChange,
+  applySchemaChange,
+  rollbackSchemaVersion,
+} from "@/app/(dashboard)/data-center/actions";
+import { resolveEffectiveSchema, slugify, validateFieldKey } from "@/lib/schema";
 import { cn } from "@/lib/utils";
 import type {
   Category,
   EffectiveField,
   FieldOverride,
   FieldType,
+  Remediation,
   SchemaField,
+  SchemaImpact,
 } from "@/lib/types";
 
 const FIELD_TYPES: FieldType[] = [
@@ -112,8 +112,13 @@ export function SchemaEditor({
   const [reviewOpen, setReviewOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  // The schema as saved — the "before" side of the diff.
-  const baseline = useMemo(() => resolveEffectiveSchema(chain), [chain]);
+  // Live impact analysis. The user should feel the risk building AS
+  // THEY TYPE rather than discover it at the end, so the severity badge
+  // on the review button is driven by a debounced round trip rather
+  // than by opening the dialog.
+  const [impact, setImpact] = useState<SchemaImpact | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
 
   // The schema as currently drafted — drives the live preview.
   const live = useMemo(() => {
@@ -183,6 +188,57 @@ export function SchemaEditor({
   const errors = ownFields.map(errorFor);
   const hasErrors = errors.some(Boolean);
 
+  // ── Live impact analysis ───────────────────────────────────
+  // Debounced at 400ms and serialised by a generation counter: typing
+  // fires several requests and they can land out of order, so a stale
+  // response must never overwrite a newer one.
+  const draftKey = useMemo(
+    () => JSON.stringify({ fields: stripDraft(ownFields), overrides }),
+    [ownFields, overrides]
+  );
+
+  useEffect(() => {
+    let live = true;
+
+    const timer = setTimeout(async () => {
+      if (!live) return;
+
+      // An incomplete or invalid draft has nothing meaningful to
+      // measure — the editor's own errors are the better signal.
+      if (!canEdit || !dirty || hasErrors) {
+        setImpact(null);
+        setAnalysisError(null);
+        setAnalyzing(false);
+        return;
+      }
+
+      setAnalyzing(true);
+      const { fields, overrides: draftOverrides } = JSON.parse(draftKey) as {
+        fields: SchemaField[];
+        overrides: Record<string, FieldOverride>;
+      };
+      const result = await analyzeSchemaChange(category.id, {
+        own_fields: fields,
+        overrides: draftOverrides,
+      });
+      if (!live) return;
+
+      if (result.ok) {
+        setImpact(result.data);
+        setAnalysisError(null);
+      } else {
+        setImpact(null);
+        setAnalysisError(result.error);
+      }
+      setAnalyzing(false);
+    }, 400);
+
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [canEdit, dirty, hasErrors, draftKey, category.id]);
+
   // ── Mutators ───────────────────────────────────────────────
   const patchField = (uid: string, patch: Partial<DraftField>) =>
     setOwnFields((previous) =>
@@ -232,23 +288,71 @@ export function SchemaEditor({
     setEditingOverride(null);
   };
 
-  const save = () => {
-    startTransition(async () => {
-      // Phase 5 swaps this call site for the impact dialog — the
-      // arguments stay the same so that is a swap, not a rewrite.
-      const result = await updateCategorySchema(category.id, {
-        own_fields: stripDraft(ownFields),
-        overrides,
+  /**
+   * Apply the draft with the remediations chosen in the dialog.
+   *
+   * Resolves false on failure so the dialog stays open with the user's
+   * choices intact — a failed migration should not cost them the work
+   * of deciding what happens to each field.
+   */
+  const apply = (remediations: Record<string, Remediation>): Promise<boolean> =>
+    new Promise((resolve) => {
+      startTransition(async () => {
+        const result = await applySchemaChange(category.id, {
+          own_fields: stripDraft(ownFields),
+          overrides,
+          remediations,
+        });
+
+        if (!result.ok) {
+          toast.error(result.error);
+          resolve(false);
+          return;
+        }
+
+        const { version, items_updated, items_orphaned, items_incomplete } = result.data;
+        const parts = [`v${version}`];
+        if (items_updated) parts.push(`${items_updated} item${items_updated === 1 ? "" : "s"} updated`);
+        if (items_orphaned) parts.push(`${items_orphaned} orphaned`);
+        if (items_incomplete) parts.push(`${items_incomplete} incomplete`);
+
+        toast.success("Schema applied", {
+          description: parts.join(" · "),
+          // Undo restores the schema, NOT the item data — say so rather
+          // than let the word "undo" imply more than it delivers.
+          action:
+            version > 1
+              ? {
+                  label: "Undo",
+                  onClick: async () => {
+                    const undone = await rollbackSchemaVersion(category.id, version - 1);
+                    if (!undone.ok) {
+                      toast.error(undone.error);
+                      return;
+                    }
+                    toast.success(`Restored v${version - 1} as v${undone.data.version}`, {
+                      description: "Schema only — item values already migrated stay as they are.",
+                    });
+                    router.refresh();
+                  },
+                }
+              : undefined,
+        });
+
+        setImpact(null);
+        resolve(true);
+        router.refresh();
       });
-      if (!result.ok) {
-        toast.error(result.error);
-        return;
-      }
-      toast.success("Schema saved");
-      setReviewOpen(false);
-      router.refresh();
     });
-  };
+
+  // Severity badge on the review button. Only `safe` is left silent —
+  // a badge that is always lit stops being a signal.
+  const destructiveCount =
+    impact?.changes.filter((change) => change.severity === "destructive").length ?? 0;
+  const warningCount =
+    impact?.changes.filter((change) => change.severity === "warning").length ?? 0;
+  const severity =
+    destructiveCount > 0 ? "destructive" : warningCount > 0 ? "warning" : null;
 
   // ── Grouping ───────────────────────────────────────────────
   const groups = useMemo(() => {
@@ -263,11 +367,6 @@ export function SchemaEditor({
     }
     return [...map.entries()];
   }, [inherited]);
-
-  const changes = useMemo(
-    () => (reviewOpen ? diffSchemas(baseline, live) : []),
-    [reviewOpen, baseline, live]
-  );
 
   return (
     <div className="space-y-4">
@@ -606,7 +705,23 @@ export function SchemaEditor({
             {dirty ? "Unsaved changes" : "No changes"}
             {hasErrors && <span className="ml-2 text-destructive">· fix errors to continue</span>}
           </p>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            {/* The risk is visible BEFORE the dialog is opened. */}
+            {severity && (
+              <span
+                className={cn(
+                  "flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium",
+                  severity === "destructive"
+                    ? "bg-destructive/10 text-destructive"
+                    : "bg-warning/10 text-warning"
+                )}
+              >
+                <AlertTriangle className="h-3 w-3" />
+                {destructiveCount > 0
+                  ? `${destructiveCount} destructive`
+                  : `${warningCount} warning${warningCount === 1 ? "" : "s"}`}
+              </span>
+            )}
             <Button variant="ghost" size="sm" onClick={discard} disabled={!dirty || pending}>
               Discard
             </Button>
@@ -621,74 +736,20 @@ export function SchemaEditor({
         </div>
       )}
 
-      {/* ── Review dialog (Phase 5 replaces the body) ──────── */}
-      <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
-        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Review schema changes</DialogTitle>
-            <DialogDescription>
-              {changes.length} change{changes.length === 1 ? "" : "s"} to {category.name}.
-            </DialogDescription>
-          </DialogHeader>
-
-          {changes.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nothing to save.</p>
-          ) : (
-            <ul className="space-y-1">
-              {changes.map((change, index) => (
-                <li
-                  key={`${change.kind}-${change.field_key}-${index}`}
-                  className="flex items-start gap-2 rounded-md border border-border px-3 py-2 text-sm"
-                >
-                  <code className="shrink-0 text-xs text-foreground">{change.field_key}</code>
-                  <span className="text-muted-foreground">{describe(change.kind)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-            <Info className="mt-0.5 h-3 w-3 shrink-0" />
-            Impact analysis against existing items arrives in Phase 5.
-          </p>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="ghost" onClick={() => setReviewOpen(false)} disabled={pending}>
-              Cancel
-            </Button>
-            <Button onClick={save} disabled={pending || changes.length === 0}>
-              {pending ? "Saving…" : "Save schema"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ImpactDialog
+        open={reviewOpen}
+        onOpenChange={setReviewOpen}
+        categoryId={category.id}
+        categoryName={category.name}
+        schema={live}
+        impact={impact}
+        analyzing={analyzing}
+        analysisError={analysisError}
+        pending={pending}
+        onApply={apply}
+      />
     </div>
   );
-}
-
-function describe(kind: string): string {
-  switch (kind) {
-    case "add_field":
-      return "will be added";
-    case "remove_field":
-      return "will be removed";
-    case "retype_field":
-      return "changes type";
-    case "require_field":
-      return "becomes required";
-    case "unrequire_field":
-      return "becomes optional";
-    case "rename_label":
-      return "label changes";
-    case "change_options":
-      return "options change";
-    case "add_override":
-      return "is overridden here";
-    case "remove_override":
-      return "override removed";
-    default:
-      return kind;
-  }
 }
 
 // ── One authored field ───────────────────────────────────────

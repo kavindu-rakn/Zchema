@@ -34,6 +34,7 @@ export default function RootLayout({
     <html
       lang="en"
       className={`dark ${saira.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: DENSITY_SCRIPT }} />
