@@ -113,12 +113,23 @@ CREATE TABLE public.items (
 -- ------------------------------------------------------------
 -- Populated in Phase 5. The table exists now so the FK graph is
 -- stable. Append-only (no UPDATE/DELETE RLS policy — Increment 4).
+--
+-- `snapshot`  — the EFFECTIVE schema at this version (EffectiveField[]),
+--               what the history diff renders.
+-- `authored`  — the AUTHORED state that produced it:
+--               { own_fields: SchemaField[], overrides: {…} }.
+--               Phase 5 addition. Rollback needs this: own_fields can be
+--               recovered from `snapshot`, but a category's `overrides`
+--               cannot — the snapshot only records the post-patch value,
+--               not which properties the patch carried. Storing the
+--               authored state makes rollback exact instead of lossy.
 -- ============================================================
 CREATE TABLE public.schema_versions (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   category_id    UUID NOT NULL REFERENCES public.categories(id) ON DELETE CASCADE,
   version        INTEGER NOT NULL,
   snapshot       JSONB NOT NULL,
+  authored       JSONB NOT NULL DEFAULT '{}'::jsonb,
   change_summary JSONB NOT NULL DEFAULT '[]'::jsonb,
   changed_by     UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),

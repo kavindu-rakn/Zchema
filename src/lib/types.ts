@@ -96,6 +96,8 @@ export interface SchemaVersion {
   category_id: string;
   version: number;
   snapshot: EffectiveField[];
+  /** The AUTHORED state that produced `snapshot`. What rollback restores. */
+  authored: { own_fields: SchemaField[]; overrides: Record<string, FieldOverride> };
   change_summary: SchemaChange[];
   changed_by: string | null;
   created_at: string;
@@ -104,9 +106,25 @@ export interface SchemaVersion {
 export type ChangeKind =
   | "add_field" | "remove_field" | "retype_field"
   | "require_field" | "unrequire_field"
-  | "rename_label" | "change_options" | "add_override" | "remove_override";
+  | "rename_label" | "change_options" | "add_override" | "remove_override"
+  // Not a field change: the marker rollback_schema_version() prepends to a
+  // version's change_summary so the timeline can say what a version WAS.
+  | "rollback";
 
 export type ChangeSeverity = "safe" | "warning" | "destructive";
+
+/**
+ * How a destructive consequence is dealt with. `discard` is the only one
+ * that loses data, and apply_schema_change refuses it without `confirm`.
+ */
+export type RemediationStrategy =
+  | "backfill" | "cast" | "orphan" | "discard" | "leave";
+
+export interface Remediation {
+  strategy: RemediationStrategy;
+  value?: unknown;     // required by `backfill`
+  confirm?: boolean;   // required by `discard`
+}
 
 export interface SchemaChange {
   kind: ChangeKind;
@@ -117,6 +135,34 @@ export interface SchemaChange {
   affected_item_count: number;
   lossy_item_count?: number;      // values that will not survive a type cast
   sample_values?: unknown[];      // up to 5, for the impact dialog in Phase 5
+  /** Present only in a recorded change_summary: what was actually done. */
+  strategy?: RemediationStrategy;
+  remediated_item_count?: number;
+}
+
+/** Return shape of analyze_schema_change(). */
+export interface SchemaImpact {
+  category_id: string;
+  current_version: number;
+  next_version: number;
+  affected_categories: { id: string; name: string; depth: number; item_count: number }[];
+  total_affected_items: number;
+  changes: SchemaChange[];
+  max_severity: ChangeSeverity;
+  blocked: boolean;
+  blocked_reason: string | null;
+}
+
+/** Return shape of apply_schema_change(). */
+export interface SchemaApplyResult {
+  category_id: string;
+  version: number;
+  items_updated: number;
+  items_orphaned: number;
+  items_incomplete: number;
+  change_summary: SchemaChange[];
+  /** Set only by rollback_schema_version(). */
+  restored_from?: number;
 }
 
 /**
