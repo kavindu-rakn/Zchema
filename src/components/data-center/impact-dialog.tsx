@@ -17,7 +17,7 @@
 // passed in — the schema editor owns it so the severity badge on the
 // "Review changes" button can update live as the user types.
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -287,6 +287,13 @@ export function ImpactDialog({
   analysisError,
   pending,
   onApply,
+  title,
+  intro,
+  children,
+  applyLabel = "Apply changes",
+  applyingLabel = "Applying…",
+  notReadyReason,
+  emptyMessage = "Nothing to save — the draft matches the saved schema.",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -294,13 +301,23 @@ export function ImpactDialog({
   categoryName: string;
   /** The DRAFT effective schema — supplies each field's type. */
   schema: EffectiveField[];
-  /** Result of analyze_schema_change for the current draft. */
+  /** Result of analyze_schema_change or analyze_category_move. */
   impact: SchemaImpact | null;
   analyzing: boolean;
   analysisError: string | null;
   pending: boolean;
   /** Resolves false when the apply failed, so the draft is kept. */
   onApply: (remediations: Record<string, Remediation>) => Promise<boolean>;
+  title?: string;
+  /** Replaces the "N categories · M items" summary line. */
+  intro?: ReactNode;
+  /** Rendered above the change cards — e.g. a destination picker. */
+  children?: ReactNode;
+  applyLabel?: string;
+  applyingLabel?: string;
+  /** A caller-side reason the apply is not ready yet. */
+  notReadyReason?: string | null;
+  emptyMessage?: string;
 }) {
   // Only what the user has explicitly picked. Defaults are derived
   // below rather than seeded into state: seeding would mean an effect
@@ -310,10 +327,29 @@ export function ImpactDialog({
   const [safeOpen, setSafeOpen] = useState(false);
 
   const changes = useMemo(() => impact?.changes ?? [], [impact]);
+
+  /**
+   * The field a change refers to, for typing its backfill input.
+   *
+   * `schema` is the caller's draft, which covers a schema edit. A MOVE
+   * gains fields from the new parent — a schema the client never
+   * fetched — so the change's own `to` payload is the fallback. It
+   * carries the whole resolved field for add_field.
+   */
   const fieldsByKey = useMemo(
     () => new Map(schema.map((field) => [field.key, field])),
     [schema]
   );
+
+  const fieldFor = (change: SchemaChange): EffectiveField | undefined => {
+    const known = fieldsByKey.get(change.field_key);
+    if (known) return known;
+    const payload = change.to ?? change.from;
+    if (payload && typeof payload === "object" && "type" in payload) {
+      return payload as EffectiveField;
+    }
+    return undefined;
+  };
 
   const sorted = useMemo(
     () =>
@@ -367,6 +403,7 @@ export function ImpactDialog({
 
   /** Why the apply button is disabled, or null when it is ready. */
   const blocker = useMemo(() => {
+    if (notReadyReason) return notReadyReason;
     if (!impact) return "Analysing…";
     if (impact.blocked) return impact.blocked_reason ?? "This change cannot be applied.";
     if (changes.length === 0) return "Nothing to apply.";
@@ -388,7 +425,7 @@ export function ImpactDialog({
       }
     }
     return null;
-  }, [impact, changes, remediations]);
+  }, [impact, changes, remediations, notReadyReason]);
 
   const destructiveCount = changes.filter((c) => c.severity === "destructive").length;
 
@@ -409,10 +446,12 @@ export function ImpactDialog({
             {impact?.max_severity === "destructive" && (
               <AlertTriangle className="h-4 w-4 text-destructive" />
             )}
-            Review changes to {categoryName}
+            {title ?? `Review changes to ${categoryName}`}
           </DialogTitle>
           <DialogDescription>
-            {analyzing && !impact ? (
+            {intro ? (
+              intro
+            ) : analyzing && !impact ? (
               "Measuring the blast radius…"
             ) : impact ? (
               <span className="flex flex-wrap items-center gap-x-1.5">
@@ -440,6 +479,8 @@ export function ImpactDialog({
         </DialogHeader>
 
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
+          {children}
+
           {analysisError && (
             <p className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
               <Ban className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -457,10 +498,8 @@ export function ImpactDialog({
             </div>
           )}
 
-          {!impact?.blocked && changes.length === 0 && !analyzing && (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              Nothing to save — the draft matches the saved schema.
-            </p>
+          {!impact?.blocked && impact && changes.length === 0 && !analyzing && (
+            <p className="py-6 text-center text-sm text-muted-foreground">{emptyMessage}</p>
           )}
 
           {!impact?.blocked &&
@@ -469,7 +508,7 @@ export function ImpactDialog({
                 key={changeId(change)}
                 change={change}
                 categoryId={categoryId}
-                field={fieldsByKey.get(change.field_key)}
+                field={fieldFor(change)}
                 totalItems={impact?.total_affected_items ?? 0}
                 remediation={remediations[changeId(change)]}
                 onStrategy={(strategy) => setStrategy(change, strategy)}
@@ -536,14 +575,14 @@ export function ImpactDialog({
                 )}
               </p>
               <div className="flex items-center gap-2">
-                {blocker && changes.length > 0 && (
+                {blocker && (changes.length > 0 || notReadyReason) && (
                   <span className="text-xs text-muted-foreground">{blocker}</span>
                 )}
                 <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={pending}>
                   Cancel
                 </Button>
                 <Button onClick={apply} disabled={pending || Boolean(blocker)}>
-                  {pending ? "Applying…" : "Apply changes"}
+                  {pending ? applyingLabel : applyLabel}
                 </Button>
               </div>
             </>

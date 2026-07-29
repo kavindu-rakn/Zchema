@@ -42,6 +42,15 @@ function flatten(nodes: CategoryNode[], depth = 0): { node: CategoryNode; depth:
   return nodes.flatMap((node) => [{ node, depth }, ...flatten(node.children, depth + 1)]);
 }
 
+/**
+ * Above this many rows, deleting demands the count be typed out.
+ *
+ * A single "Are you sure?" is proportionate to losing three records and
+ * not to losing fifty. The threshold exists so the friction lands where
+ * the consequence does, rather than nagging on every small delete.
+ */
+const TYPED_CONFIRM_THRESHOLD = 20;
+
 export function BulkActionsBar({
   selected,
   categoryId,
@@ -62,6 +71,11 @@ export function BulkActionsBar({
   const [target, setTarget] = useState<string | null>(null);
   const [preview, setPreview] = useState<MovePreview | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+
+  const needsTypedConfirm = selected.length > TYPED_CONFIRM_THRESHOLD;
+  const deleteConfirmed =
+    !needsTypedConfirm || deleteConfirmation.trim() === String(selected.length);
 
   useEffect(() => {
     if (mode !== "move") {
@@ -92,10 +106,14 @@ export function BulkActionsBar({
     };
   }, [mode, target, selected]);
 
-  const close = () => setMode(null);
+  const close = () => {
+    setMode(null);
+    setDeleteConfirmation("");
+  };
 
   const runDelete = () =>
     startTransition(async () => {
+      if (!deleteConfirmed) return;
       const result = await deleteItems(selected, categoryId);
       if (!result.ok) {
         toast.error(result.error);
@@ -178,15 +196,40 @@ export function BulkActionsBar({
             <DialogTitle>
               Delete {selected.length} item{selected.length === 1 ? "" : "s"}?
             </DialogTitle>
-            <DialogDescription>This cannot be undone.</DialogDescription>
+            <DialogDescription>
+              This cannot be undone. These rows and every value in them are destroyed.
+            </DialogDescription>
           </DialogHeader>
+
+          {/* Past the threshold the count has to be typed. Muscle
+              memory gets you through a confirm button; it does not get
+              you through typing "48". */}
+          {needsTypedConfirm && (
+            <div className="space-y-1.5">
+              <label htmlFor="bulk-delete-confirm" className="text-sm text-foreground">
+                Type <strong className="font-mono">{selected.length}</strong> to confirm
+              </label>
+              <input
+                id="bulk-delete-confirm"
+                value={deleteConfirmation}
+                onChange={(event) => setDeleteConfirmation(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && deleteConfirmed) runDelete();
+                }}
+                inputMode="numeric"
+                autoComplete="off"
+                className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </div>
+          )}
+
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={close} disabled={pending}>
               Cancel
             </Button>
             <Button
               onClick={runDelete}
-              disabled={pending}
+              disabled={pending || !deleteConfirmed}
               className="bg-destructive text-white hover:bg-destructive/90"
             >
               {pending ? "Deleting…" : "Delete permanently"}

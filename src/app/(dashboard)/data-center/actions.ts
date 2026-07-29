@@ -142,21 +142,6 @@ export async function updateCategory(
   }
 }
 
-export async function deleteCategory(id: string): Promise<ActionResult> {
-  try {
-    await requireSchemaAdmin();
-
-    const supabase = await createClient();
-    const { error } = await supabase.from("categories").delete().eq("id", id);
-    if (error) throw new Error(error.message);
-
-    revalidateCategoryViews();
-    return { ok: true, data: null };
-  } catch (error) {
-    return actionError(error, "Could not delete the category.");
-  }
-}
-
 /**
  * Replace a category's own_fields and/or overrides.
  *
@@ -363,138 +348,145 @@ export async function applyBlueprint(
   }
 }
 
+// ── Structural operations (Phase 5) ──────────────────────────
+// Re-parenting and deleting are routed through the same impact
+// machinery as a schema edit. There is exactly one place where "this
+// will break things" is explained, and one set of remediation rules
+// deciding what happens to the values caught in the middle.
+
 /**
  * What a re-parent would do, before doing it.
  *
- * Full impact analysis lands in Phase 5; this is the blocking check
- * plus enough plain language to make the consequence obvious:
- *   - which inherited fields are lost and gained
- *   - which items hold values for a field that is about to disappear
- *   - whether a key collision makes the move impossible at all
+ * Returns the same shape as `analyzeSchemaChange`, because it is the
+ * same question: a move swaps the entire inherited half of the
+ * subtree's schema, so fields appear, fields disappear, and values
+ * have to go somewhere.
  */
-export async function previewCategoryMove(
+export async function analyzeCategoryMove(
   categoryId: string,
   newParentId: string | null
-): Promise<
-  ActionResult<{
-    blocked: boolean;
-    collisions: string[];
-    losing: string[];
-    gaining: string[];
-    keeping: string[];
-    affectedItemCount: number;
-  }>
-> {
+): Promise<ActionResult<SchemaImpact>> {
   try {
     await requireSchemaAdmin();
 
     const supabase = await createClient();
+    const { data, error } = await supabase.rpc("analyze_category_move", {
+      p_category_id: categoryId,
+      p_new_parent_id: newParentId,
+    });
 
-    // Descendants (plus self) — a move re-roots the whole subtree.
-    const { data: subtreeRows, error: subtreeError } = await supabase.rpc(
-      "get_category_subtree",
-      { p_category_id: categoryId }
-    );
-    if (subtreeError) throw new Error(subtreeError.message);
-    const subtreeIds = ((subtreeRows ?? []) as { id: string }[]).map((row) => row.id);
-
-    if (newParentId && subtreeIds.includes(newParentId)) {
-      return {
-        ok: false,
-        error: "You cannot move a category into itself or one of its own descendants.",
-      };
-    }
-
-    const [currentRes, parentRes, subtreeCatsRes] = await Promise.all([
-      supabase.rpc("get_effective_schema", { p_category_id: categoryId }),
-      newParentId
-        ? supabase.rpc("get_effective_schema", { p_category_id: newParentId })
-        : Promise.resolve({ data: [], error: null }),
-      supabase.from("categories").select("id, own_fields").in("id", subtreeIds),
-    ]);
-
-    if (currentRes.error) throw new Error(currentRes.error.message);
-    if (parentRes.error) throw new Error(parentRes.error.message);
-    if (subtreeCatsRes.error) throw new Error(subtreeCatsRes.error.message);
-
-    const current = (currentRes.data ?? []) as { key: string; inherited: boolean }[];
-    const newInherited = (parentRes.data ?? []) as { key: string }[];
-
-    const currentInheritedKeys = current.filter((f) => f.inherited).map((f) => f.key);
-    const newInheritedKeys = newInherited.map((f) => f.key);
-
-    const losing = currentInheritedKeys.filter((key) => !newInheritedKeys.includes(key));
-    const gaining = newInheritedKeys.filter((key) => !currentInheritedKeys.includes(key));
-    const keeping = current.filter((f) => !f.inherited).map((f) => f.key);
-
-    // A key this subtree AUTHORS cannot also be inherited from the new
-    // parent — the DB trigger rejects it, so block here with the name.
-    const subtreeOwnKeys = new Set<string>();
-    for (const row of (subtreeCatsRes.data ?? []) as { own_fields: SchemaField[] }[]) {
-      for (const field of row.own_fields ?? []) subtreeOwnKeys.add(field.key);
-    }
-    const collisions = newInheritedKeys.filter((key) => subtreeOwnKeys.has(key));
-
-    // Items in the subtree holding a value for a field about to vanish.
-    let affectedItemCount = 0;
-    if (losing.length > 0) {
-      const { data: items, error: itemsError } = await supabase
-        .from("items")
-        .select("data")
-        .in("category_id", subtreeIds);
-      if (itemsError) throw new Error(itemsError.message);
-
-      affectedItemCount = ((items ?? []) as { data: Record<string, unknown> }[]).filter((item) =>
-        losing.some((key) => {
-          const value = item.data?.[key];
-          return value !== undefined && value !== null && value !== "";
-        })
-      ).length;
-    }
-
-    return {
-      ok: true,
-      data: {
-        blocked: collisions.length > 0,
-        collisions,
-        losing,
-        gaining,
-        keeping,
-        affectedItemCount,
-      },
-    };
+    if (error) throw new Error(error.message);
+    return { ok: true, data: data as SchemaImpact };
   } catch (error) {
     return actionError(error, "Could not work out what this move would do.");
   }
 }
 
 /**
- * Re-parent a category. The database rejects cycles
- * (prevent_category_cycle) and any move that would make a descendant
- * redefine a newly-inherited field (validate_category_fields).
+ * Re-parent a category, applying the chosen remediation to every value
+ * that the move strands. One transaction, in the database.
  */
-export async function moveCategory(
-  id: string,
-  newParentId: string | null
-): Promise<ActionResult> {
+export async function applyCategoryMove(
+  categoryId: string,
+  newParentId: string | null,
+  remediations?: Record<string, Remediation>
+): Promise<ActionResult<SchemaApplyResult>> {
   try {
-    await requireSchemaAdmin();
+    const profile = await requireSchemaAdmin();
 
-    if (id === newParentId) {
+    if (categoryId === newParentId) {
       return { ok: false, error: "A category cannot be its own parent." };
     }
 
     const supabase = await createClient();
-    const { error } = await supabase
-      .from("categories")
-      .update({ parent_id: newParentId })
-      .eq("id", id);
+    const { data, error } = await supabase.rpc("apply_category_move", {
+      p_category_id: categoryId,
+      p_new_parent_id: newParentId,
+      p_remediations: remediations ?? {},
+      p_changed_by: profile.id,
+    });
 
     if (error) throw new Error(error.message);
 
     revalidateCategoryViews();
-    return { ok: true, data: null };
+    return { ok: true, data: data as SchemaApplyResult };
   } catch (error) {
     return actionError(error, "Could not move the category.");
+  }
+}
+
+export interface CategoryDeletePreview {
+  category_id: string;
+  parent_id: string | null;
+  parent_name: string | null;
+  descendant_count: number;
+  item_count: number;
+  can_move_to_parent: boolean;
+  /** Item values that would survive a move to the parent. */
+  carried_keys: string[];
+  /** Item values that would become orphaned data on the parent. */
+  orphaned_keys: string[];
+}
+
+/** What a delete would destroy, and whether the items can be rescued. */
+export async function previewCategoryDelete(
+  categoryId: string
+): Promise<ActionResult<CategoryDeletePreview>> {
+  try {
+    await requireSchemaAdmin();
+
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("preview_category_delete", {
+      p_category_id: categoryId,
+    });
+
+    if (error) throw new Error(error.message);
+    return { ok: true, data: data as CategoryDeletePreview };
+  } catch (error) {
+    return actionError(error, "Could not work out what deleting this would do.");
+  }
+}
+
+/**
+ * Delete a category, optionally rescuing its items to the parent first.
+ *
+ * Cascade-deleting 48 items behind a plain confirm is the single most
+ * dangerous thing this app can do, so the alternative is offered in the
+ * same transaction rather than left to the user to arrange by hand.
+ */
+export async function deleteCategory(
+  id: string,
+  options?: { moveItemsToParent?: boolean }
+): Promise<
+  ActionResult<{
+    deleted_categories: number;
+    moved_items: number;
+    orphaned_values: number;
+    deleted_items: number;
+  }>
+> {
+  try {
+    await requireSchemaAdmin();
+
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("delete_category_safely", {
+      p_category_id: id,
+      p_move_items_to_parent: options?.moveItemsToParent ?? false,
+    });
+
+    if (error) throw new Error(error.message);
+
+    revalidateCategoryViews();
+    return {
+      ok: true,
+      data: data as {
+        deleted_categories: number;
+        moved_items: number;
+        orphaned_values: number;
+        deleted_items: number;
+      },
+    };
+  } catch (error) {
+    return actionError(error, "Could not delete the category.");
   }
 }
