@@ -21,8 +21,10 @@ import {
   GripVertical,
   Layers,
   Lock,
+  Link2,
   Plus,
   RotateCcw,
+  Tags,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -33,6 +35,7 @@ import { DynamicForm } from "@/components/data-center/dynamic-form";
 import { OptionsEditor } from "@/components/data-center/options-editor";
 import { FieldProvenance } from "@/components/data-center/field-provenance";
 import { ImpactDialog } from "@/components/data-center/impact-dialog";
+import { AttributePicker } from "@/components/attributes/attribute-picker";
 import { SaveAsBlueprint } from "@/components/blueprints/save-as-blueprint";
 import {
   analyzeSchemaChange,
@@ -110,6 +113,7 @@ export function SchemaEditor({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [editingOverride, setEditingOverride] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [pickingAttribute, setPickingAttribute] = useState(false);
   const [pending, startTransition] = useTransition();
 
   // Live impact analysis. The user should feel the risk building AS
@@ -261,6 +265,46 @@ export function SchemaEditor({
 
   const removeField = (uid: string) =>
     setOwnFields((previous) => previous.filter((field) => field._uid !== uid));
+
+  /**
+   * Insert fields pulled from the attribute library.
+   *
+   * The picker already disables anything the effective chain provides,
+   * but a second guard here is cheap and covers the case where the
+   * draft gained a key since the picker opened.
+   */
+  const addFromLibrary = (fields: SchemaField[]) => {
+    setOwnFields((previous) => {
+      const existing = new Set([
+        ...previous.map((field) => field.key),
+        ...inherited.map((field) => field.key),
+      ]);
+      const fresh = fields.filter((field) => !existing.has(field.key));
+      const skipped = fields.length - fresh.length;
+
+      if (fresh.length === 0) {
+        toast.error("Every one of those is already in this category's schema.");
+        return previous;
+      }
+      if (skipped > 0) {
+        toast.warning(
+          `Added ${fresh.length}; skipped ${skipped} already present in this category's chain.`
+        );
+      }
+
+      return [
+        ...previous,
+        ...fresh.map((field, index) => ({
+          ...field,
+          _uid: nextUid(),
+          // Not locked: the field has never been saved, so its key is
+          // still safe to change.
+          _locked: false,
+          position: previous.length + index,
+        })),
+      ];
+    });
+  };
 
   const startOverride = (field: EffectiveField) => {
     setOverrides((previous) => ({
@@ -648,16 +692,10 @@ export function SchemaEditor({
                   <Plus className="mr-1.5 h-3.5 w-3.5" />
                   Add field
                 </Button>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button size="sm" variant="outline" disabled>
-                        From attribute library
-                      </Button>
-                    }
-                  />
-                  <TooltipContent>Coming in Phase 6</TooltipContent>
-                </Tooltip>
+                <Button size="sm" variant="outline" onClick={() => setPickingAttribute(true)}>
+                  <Tags className="mr-1.5 h-3.5 w-3.5" />
+                  From attribute library
+                </Button>
                 <SaveAsBlueprint
                   categoryId={category.id}
                   categoryName={category.name}
@@ -736,6 +774,13 @@ export function SchemaEditor({
         </div>
       )}
 
+      <AttributePicker
+        open={pickingAttribute}
+        onOpenChange={setPickingAttribute}
+        schema={live}
+        onAdd={addFromLibrary}
+      />
+
       <ImpactDialog
         open={reviewOpen}
         onOpenChange={setReviewOpen}
@@ -802,6 +847,29 @@ function FieldRow({
         />
 
         <div className="flex shrink-0 items-center gap-1">
+          {/* Linked to the shared registry — editing the attribute
+              updates this field too, which is worth knowing before
+              someone edits the label here and wonders why it moved. */}
+          {field.attribute_id && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Link
+                    href={`/data-center/attributes/${field.attribute_id}`}
+                    aria-label={`View the shared ${field.key} attribute`}
+                    className="flex h-6 w-6 items-center justify-center rounded text-primary hover:bg-primary/10"
+                  >
+                    <Link2 className="h-3 w-3" />
+                  </Link>
+                }
+              />
+              <TooltipContent>
+                Linked to the shared “{field.key}” attribute. Its label, options and unit are
+                managed in the attribute library.
+              </TooltipContent>
+            </Tooltip>
+          )}
+
           {field._locked ? (
             <Tooltip>
               <TooltipTrigger

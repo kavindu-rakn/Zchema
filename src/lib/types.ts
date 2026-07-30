@@ -82,6 +82,117 @@ export interface Blueprint {
   updated_at: string;
 }
 
+/**
+ * A reusable field definition in the shared registry (Phase 6).
+ *
+ * A category's `SchemaField.attribute_id` points here. That back-link is
+ * what turns `brand` defined on three unrelated categories into one
+ * queryable concept — without it, cross-category search cannot know the
+ * three fields mean the same thing.
+ *
+ * `label` / `options` / `unit` / `description` propagate to linked
+ * fields when edited. `key` and `type` are immutable: a global retype
+ * has no single blast radius to show, so it must go through the
+ * per-category impact flow instead.
+ */
+export interface Attribute {
+  id: string;
+  key: string;
+  label: string;
+  type: FieldType;
+  options: string[];
+  unit: string | null;
+  description: string | null;
+  /** Presentational grouping, e.g. "Physical", "Commercial". */
+  group_name: string | null;
+  /** Relied on by the app itself; deletion is refused. */
+  is_system: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** An attribute plus how widely it is used — from get_attributes_with_usage(). */
+export interface AttributeWithUsage extends Attribute {
+  category_count: number;
+  item_count: number;
+}
+
+/** One category's use of an attribute — from get_attribute_usage(). */
+export interface AttributeUsage {
+  category_id: string;
+  category_name: string;
+  category_icon: string | null;
+  category_color: string | null;
+  field_key: string;
+  required: boolean;
+  item_count: number;
+  subtree_item_count: number;
+}
+
+/**
+ * A field key authored on several categories with no attribute linking
+ * them — a promotion candidate, from find_duplicate_field_definitions().
+ */
+export interface DuplicateFieldDefinition {
+  key: string;
+  label: string;
+  /** The most common type among the definitions. */
+  type: FieldType;
+  /** False when the definitions disagree — promotion would have to coerce. */
+  types_agree: boolean;
+  types: string[];
+  category_count: number;
+  item_count: number;
+  categories: { id: string; name: string; type: FieldType; item_count: number }[];
+}
+
+// ── Cross-category search (Phase 6) ──────────────────────────
+
+/**
+ * Operators accepted by search_items().
+ *
+ * The comparison operators cast through try_numeric() server-side, so a
+ * row holding "call for pricing" under a key being compared numerically
+ * is skipped rather than aborting the whole query.
+ */
+export type SearchOperator =
+  | "eq" | "neq"
+  | "gt" | "gte" | "lt" | "lte"
+  | "contains" | "starts_with"
+  | "in" | "is_null" | "not_null";
+
+export interface SearchFilter {
+  key: string;
+  op: SearchOperator;
+  /** Unused by is_null / not_null. `in` takes a comma-separated list. */
+  value?: string;
+}
+
+export interface SearchResult {
+  id: string;
+  category_id: string;
+  category_name: string;
+  /** "Electronics / Laptops / Gaming Laptops". */
+  category_path: string;
+  data: Record<string, unknown>;
+  rank: number;
+  /** Total matching rows before LIMIT — same on every row. */
+  total_count: number;
+}
+
+/** A field key in scope, from get_searchable_fields(). Drives autocomplete. */
+export interface SearchableField {
+  key: string;
+  label: string;
+  type: FieldType;
+  /** How many categories define this key. */
+  category_count: number;
+  /** True when at least one definition is linked to a shared attribute. */
+  is_shared_attribute: boolean;
+  /** Union of every option any category offers, for value autocomplete. */
+  options: string[];
+}
+
 export interface Item {
   id: string;
   category_id: string;
