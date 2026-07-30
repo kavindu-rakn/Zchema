@@ -12,6 +12,7 @@ import {
   FolderTree,
   LayoutDashboard,
   Layers,
+  Tags,
   PlusCircle,
   Search,
   Settings,
@@ -153,6 +154,12 @@ export function CommandPalette() {
             >
               <Layers className="mr-2 h-4 w-4" />
               Go to Blueprints
+            </CommandItem>
+            <CommandItem
+              onSelect={() => runCommand(() => router.push("/data-center/attributes"))}
+            >
+              <Tags className="mr-2 h-4 w-4" />
+              Go to Attributes
             </CommandItem>
             <CommandItem onSelect={() => runCommand(() => router.push("/settings"))}>
               <Settings className="mr-2 h-4 w-4" />
