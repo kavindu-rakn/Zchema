@@ -35,6 +35,7 @@ import { DynamicForm } from "@/components/data-center/dynamic-form";
 import { OptionsEditor } from "@/components/data-center/options-editor";
 import { FieldProvenance } from "@/components/data-center/field-provenance";
 import { ImpactDialog } from "@/components/data-center/impact-dialog";
+import { Hint } from "@/components/onboarding/hint";
 import { AttributePicker } from "@/components/attributes/attribute-picker";
 import { SaveAsBlueprint } from "@/components/blueprints/save-as-blueprint";
 import {
@@ -97,11 +98,14 @@ export function SchemaEditor({
   category,
   chain,
   canEdit,
+  dismissedHints = [],
 }: {
   category: Category;
   /** Ancestors root-first, INCLUDING this category last. */
   chain: Pick<Category, "id" | "name" | "own_fields" | "overrides">[];
   canEdit: boolean;
+  /** Onboarding hints this user has already dismissed. */
+  dismissedHints?: string[];
 }) {
   const router = useRouter();
   const [ownFields, setOwnFields] = useState<DraftField[]>(() =>
@@ -427,6 +431,18 @@ export function SchemaEditor({
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0 space-y-4">
+          {/* The entire tutorial: one line, pointing at something
+              already on screen. A hint that explains a concept you
+              cannot see is a tour, and tours get skipped. */}
+          {inherited.length > 0 && (
+            <Hint hintKey="inherited-block" dismissed={dismissedHints} tone="primary">
+              These <strong>{inherited.length} fields</strong> are not defined here — they come
+              from {groups.map(([, group]) => group.name).join(" and ")}, further up the tree.
+              Add a field below and only {category.name} and its descendants get it; the rest of
+              the tree is untouched.
+            </Hint>
+          )}
+
           {/* ── Inherited ─────────────────────────────────── */}
           <section className="rounded-lg border border-border bg-card">
             <header className="flex items-center gap-2 border-b border-border px-4 py-2">

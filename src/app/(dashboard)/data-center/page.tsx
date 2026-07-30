@@ -1,15 +1,29 @@
 import Link from "next/link";
 import { ArrowRight, Clock, FolderTree, Layers } from "lucide-react";
 
-import { getRecentCategories } from "@/lib/data/categories";
+import { FirstRun } from "@/components/onboarding/first-run";
+import { getCategoryTreeFlat, getRecentCategories } from "@/lib/data/categories";
+import { getCurrentRole } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-// No node selected. A blank pane reads as broken, so this offers the
-// three most recently touched categories as a way straight back in.
+// Two different pages sharing one route.
+//
+// An EMPTY catalog is not "no node selected" — it is someone with
+// nothing, and telling them to "pick a category from the tree" when the
+// tree is empty is the definition of a blank page with a button. Once
+// there is anything at all, this reverts to the fastest way back in.
 
 export default async function DataCenterPage() {
-  const recent = await getRecentCategories(3);
+  const [flat, recent, role] = await Promise.all([
+    getCategoryTreeFlat(),
+    getRecentCategories(3),
+    getCurrentRole(),
+  ]);
+
+  if (flat.length === 0) {
+    return <FirstRun canEdit={role === "SCHEMA_ADMIN"} />;
+  }
 
   return (
     <div className="mx-auto flex min-h-full max-w-2xl flex-col justify-center px-6 py-12">
