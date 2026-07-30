@@ -101,12 +101,18 @@ function summarise(changes: SchemaChange[]): string {
       case "rename_label":
         bump("relabelled");
         break;
+      case "change_help_text":
+        bump("help text edited");
+        break;
       case "add_override":
       case "remove_override":
         bump("override changed");
         break;
       case "rollback":
         bump("rollback");
+        break;
+      case "reparent":
+        bump("moved");
         break;
       default:
         break;

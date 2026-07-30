@@ -180,6 +180,8 @@ function headline(change: SchemaChange): string {
       return "now optional";
     case "rename_label":
       return "label changed";
+    case "change_help_text":
+      return "help text changed";
     case "change_options":
       return "options changed";
     case "add_override":
@@ -188,6 +190,8 @@ function headline(change: SchemaChange): string {
       return "override removed";
     case "rollback":
       return "restored";
+    case "reparent":
+      return "moved";
     default:
       return change.kind;
   }
@@ -230,6 +234,9 @@ function explain(change: SchemaChange, totalItems: number): string {
 
     case "rename_label":
       return "Display only. The stored key and every item value are untouched.";
+
+    case "change_help_text":
+      return "Guidance shown beside the input. Nothing stored changes.";
 
     case "add_override":
       return "This category now patches an inherited field. Its ancestors are unaffected.";

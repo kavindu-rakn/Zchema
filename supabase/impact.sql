@@ -450,6 +450,19 @@ BEGIN
       ));
     END IF;
 
+    -- Help text: also cosmetic, but it must still be REPORTED.
+    -- A change nobody reports is a change nobody can apply: the impact
+    -- dialog disables its button when the analysis comes back empty, so
+    -- omitting this made a help-text-only edit impossible to save.
+    IF COALESCE(before_f->>'help_text', '') IS DISTINCT FROM
+       COALESCE(after_f->>'help_text', '') THEN
+      changes := changes || jsonb_build_array(jsonb_build_object(
+        'kind', 'change_help_text', 'field_key', k, 'severity', 'safe',
+        'from', before_f->>'help_text', 'to', after_f->>'help_text',
+        'affected_item_count', 0
+      ));
+    END IF;
+
     -- Options: only REMOVING one can strand data.
     IF COALESCE(before_f->'options', '[]'::jsonb) IS DISTINCT FROM
        COALESCE(after_f->'options', '[]'::jsonb) THEN

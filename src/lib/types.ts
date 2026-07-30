@@ -106,10 +106,12 @@ export interface SchemaVersion {
 export type ChangeKind =
   | "add_field" | "remove_field" | "retype_field"
   | "require_field" | "unrequire_field"
-  | "rename_label" | "change_options" | "add_override" | "remove_override"
-  // Not a field change: the marker rollback_schema_version() prepends to a
-  // version's change_summary so the timeline can say what a version WAS.
-  | "rollback";
+  | "rename_label" | "change_help_text"
+  | "change_options" | "add_override" | "remove_override"
+  // Not field changes: markers prepended to a version's change_summary so
+  // the timeline can say what a version WAS, rather than only how its
+  // fields differ. `field_key` is "__schema" / "__parent" for these.
+  | "rollback" | "reparent";
 
 export type ChangeSeverity = "safe" | "warning" | "destructive";
 
