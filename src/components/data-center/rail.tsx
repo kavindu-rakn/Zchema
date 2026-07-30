@@ -12,6 +12,7 @@ import { Search } from "lucide-react";
 
 import { CategoryTree } from "@/components/data-center/category-tree";
 import { NewRootCategory } from "@/components/data-center/new-root-category";
+import { ImportEntry } from "@/components/import/import-entry";
 import { cn } from "@/lib/utils";
 import type { CategoryNode } from "@/lib/types";
 
@@ -188,8 +189,9 @@ export function Rail({
           />
         </nav>
 
-        <div className="shrink-0 border-t border-border p-2">
+        <div className="shrink-0 space-y-0.5 border-t border-border p-2">
           <NewRootCategory />
+          {canEdit && <ImportEntry tree={tree} />}
         </div>
       </aside>
 
