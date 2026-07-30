@@ -76,7 +76,7 @@ export function TopBar({
             SchemaShift
           </span>
           <span className="hidden rounded border border-border px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground sm:inline">
-            SLT
+            Dynamic Catelog Engine
           </span>
         </Link>
 

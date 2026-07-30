@@ -8,10 +8,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  ArrowRight,
   Boxes,
   FolderTree,
   LayoutDashboard,
   Layers,
+  Package,
   Tags,
   PlusCircle,
   Search,
@@ -29,6 +31,8 @@ import {
 } from "@/components/ui/command";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/utils/supabase/client";
+import { parseQuery } from "@/lib/query-dsl";
+import type { SearchResult } from "@/lib/types";
 
 interface CategoryRow {
   id: string;
@@ -36,10 +40,15 @@ interface CategoryRow {
   parent_id: string | null;
 }
 
+/** Below this, an item search is noise — almost everything matches. */
+const MIN_ITEM_QUERY = 2;
+
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [query, setQuery] = useState("");
+  const [items, setItems] = useState<SearchResult[]>([]);
   const router = useRouter();
 
   useEffect(() => {
@@ -74,6 +83,45 @@ export function CommandPalette() {
       cancelled = true;
     };
   }, [open, loaded]);
+
+  /**
+   * Live ITEM results, debounced.
+   *
+   * This is what makes the palette the fastest path to any record: the
+   * category list tells you where things live, but ⌘K → "airpods" →
+   * Enter should land on the record itself. Debounced at 250ms and
+   * serialised by a liveness flag so a slow response cannot overwrite
+   * a newer one.
+   */
+  useEffect(() => {
+    let live = true;
+
+    const timer = setTimeout(async () => {
+      const trimmed = query.trim();
+      if (!open || trimmed.length < MIN_ITEM_QUERY) {
+        setItems([]);
+        return;
+      }
+
+      const parsed = parseQuery(trimmed);
+      const supabase = createClient();
+      const { data } = await supabase.rpc("search_items", {
+        p_query: parsed.text.trim() || null,
+        p_filters: parsed.filters,
+        p_category_id: null,
+        p_limit: 5,
+        p_offset: 0,
+      });
+
+      if (!live) return;
+      setItems((data ?? []) as SearchResult[]);
+    }, 250);
+
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [open, query]);
 
   /** "Electronics › Laptops › Gaming Laptops" for each category. */
   const withPaths = useMemo(() => {
@@ -114,9 +162,59 @@ export function CommandPalette() {
       </Button>
 
       <CommandDialog open={open} onOpenChange={setOpen}>
-        <CommandInput placeholder="Search categories or type a command…" />
+        <CommandInput
+          value={query}
+          onValueChange={setQuery}
+          placeholder="Search items, categories, or type a command…"
+        />
         <CommandList>
           <CommandEmpty>No results found.</CommandEmpty>
+
+          {/* Items first: when you know what you are looking for, the
+              record beats the folder it lives in. */}
+          {items.length > 0 && (
+            <>
+              <CommandGroup heading="Items">
+                {items.map((item) => (
+                  <CommandItem
+                    key={item.id}
+                    // These rows are already filtered by the database.
+                    // Seeding `value` with the raw query keeps cmdk's
+                    // own client-side filter from hiding them again.
+                    value={`${query} ${itemLabel(item.data)}`}
+                    onSelect={() =>
+                      runCommand(() =>
+                        router.push(`/data-center/${item.category_id}?tab=items`)
+                      )
+                    }
+                  >
+                    <Package className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate">{itemLabel(item.data)}</span>
+                    <span className="ml-2 shrink-0 truncate text-xs text-muted-foreground">
+                      {item.category_name}
+                    </span>
+                  </CommandItem>
+                ))}
+
+                {items[0]?.total_count > items.length && (
+                  <CommandItem
+                    value={`${query} see all results`}
+                    onSelect={() =>
+                      runCommand(() =>
+                        router.push(`/search?q=${encodeURIComponent(query.trim())}`)
+                      )
+                    }
+                  >
+                    <ArrowRight className="mr-2 h-4 w-4 shrink-0 text-primary" />
+                    <span className="text-primary">
+                      See all {items[0].total_count} results
+                    </span>
+                  </CommandItem>
+                )}
+              </CommandGroup>
+              <CommandSeparator />
+            </>
+          )}
 
           {withPaths.length > 0 && (
             <>
@@ -161,6 +259,10 @@ export function CommandPalette() {
               <Tags className="mr-2 h-4 w-4" />
               Go to Attributes
             </CommandItem>
+            <CommandItem onSelect={() => runCommand(() => router.push("/search"))}>
+              <Search className="mr-2 h-4 w-4" />
+              Go to Search
+            </CommandItem>
             <CommandItem onSelect={() => runCommand(() => router.push("/settings"))}>
               <Settings className="mr-2 h-4 w-4" />
               Settings
@@ -185,4 +287,16 @@ export function CommandPalette() {
       </CommandDialog>
     </>
   );
+}
+
+/** The field most likely to name an item, mirroring the search page. */
+function itemLabel(data: Record<string, unknown>): string {
+  for (const key of ["name", "title", "model", "model_number", "label", "sku"]) {
+    const value = data[key];
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  const first = Object.entries(data).find(
+    ([key, value]) => key !== "__orphaned" && typeof value === "string" && value.trim()
+  );
+  return (first?.[1] as string) ?? "Untitled item";
 }
