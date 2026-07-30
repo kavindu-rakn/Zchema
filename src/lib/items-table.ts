@@ -91,6 +91,15 @@ export function defaultOpFor(field: EffectiveField): FilterOp {
  * defines itself plus the inherited fields that are required — the
  * ones a row is actually obliged to fill in.
  */
+/**
+ * Reserved column key for `items.schema_version`.
+ *
+ * A metadata COLUMN, not a schema field, so it is off by default and
+ * lives outside the provenance grouping. The `__` prefix cannot collide
+ * with a real key: the field-key grammar requires `^[a-z]`.
+ */
+export const SCHEMA_VERSION_COLUMN = "__schema_version";
+
 export function defaultVisibleColumns(schema: EffectiveField[]): string[] {
   const chosen = schema
     .filter((field) => !field.inherited || field.required)

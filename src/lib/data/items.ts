@@ -62,6 +62,8 @@ export interface ItemQuery {
   page?: number;
   pageSize?: number;
   health?: ItemHealth | null;
+  /** Only items written against a schema_version below this. */
+  staleBefore?: number | null;
 }
 
 export interface ItemHealthCounts {
@@ -109,6 +111,7 @@ export async function queryItems(
     p_limit: pageSize,
     p_offset: (page - 1) * pageSize,
     p_health: query.health ?? null,
+    p_stale_before: query.staleBefore ?? null,
   });
 
   if (error) throw new Error(`Could not load items: ${error.message}`);

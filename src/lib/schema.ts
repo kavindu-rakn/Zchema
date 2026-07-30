@@ -191,6 +191,16 @@ export function diffSchemas(
     if (prev.label !== field.label) {
       changes.push({ ...base("rename_label", field.key), from: prev.label, to: field.label });
     }
+    // Mirrors analyze_schema_change: help text is cosmetic but must
+    // still be reported, or a help-text-only edit shows as "no changes"
+    // and the apply button never enables.
+    if ((prev.help_text ?? "") !== (field.help_text ?? "")) {
+      changes.push({
+        ...base("change_help_text", field.key),
+        from: prev.help_text,
+        to: field.help_text,
+      });
+    }
     if (!sameOptions(prev.options, field.options)) {
       changes.push({ ...base("change_options", field.key), from: prev.options, to: field.options });
     }

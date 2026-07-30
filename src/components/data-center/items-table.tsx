@@ -30,6 +30,7 @@ import {
   defaultVisibleColumns,
   encodeFilters,
   formatCell,
+  SCHEMA_VERSION_COLUMN,
 } from "@/lib/items-table";
 import { cn } from "@/lib/utils";
 import { BulkActionsBar } from "@/components/data-center/bulk-actions-bar";
@@ -107,7 +108,11 @@ export function ItemsTable({
       const stored = window.localStorage.getItem(storageKey);
       if (stored) {
         const parsed = JSON.parse(stored) as string[];
-        const stillValid = parsed.filter((key) => schema.some((f) => f.key === key));
+        // A stored key whose field has since been removed is dropped;
+        // metadata columns are not in `schema` and must survive it.
+        const stillValid = parsed.filter(
+          (key) => key === SCHEMA_VERSION_COLUMN || schema.some((f) => f.key === key)
+        );
         if (stillValid.length) {
           setVisible(stillValid);
           return;
@@ -176,6 +181,11 @@ export function ItemsTable({
     () => schema.filter((field) => visible.includes(field.key)),
     [schema, visible]
   );
+
+  // Metadata column, opt-in from the column picker. Shows which schema
+  // version each row's data was last written against.
+  const showSchemaVersion = visible.includes(SCHEMA_VERSION_COLUMN);
+  const latestSchemaVersion = rows.reduce((max, row) => Math.max(max, row.schema_version), 0);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const hasFilters = filters.length > 0;
@@ -455,6 +465,15 @@ export function ItemsTable({
                   </th>
                 ))}
 
+                {showSchemaVersion && (
+                  <th
+                    data-slot="table-head"
+                    className="px-3 py-2 text-right font-medium text-muted-foreground"
+                  >
+                    Schema
+                  </th>
+                )}
+
                 <th
                   data-slot="table-head"
                   className="px-3 py-2 text-right font-medium text-muted-foreground"
@@ -528,6 +547,26 @@ export function ItemsTable({
                         )}
                       </td>
                     ))}
+
+                    {showSchemaVersion && (
+                      <td data-slot="table-cell" className="px-3 py-2 text-right">
+                        <span
+                          className={cn(
+                            "text-xs tabular-nums",
+                            row.schema_version < latestSchemaVersion
+                              ? "text-warning"
+                              : "text-muted-foreground"
+                          )}
+                          title={
+                            row.schema_version < latestSchemaVersion
+                              ? "Written against an older schema than the newest row here"
+                              : undefined
+                          }
+                        >
+                          v{row.schema_version}
+                        </span>
+                      </td>
+                    )}
 
                     <td data-slot="table-cell" className="px-3 py-2 text-right">
                       <Tooltip>

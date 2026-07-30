@@ -10,7 +10,7 @@ import { Columns3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { groupByProvenance } from "@/lib/items";
-import { defaultVisibleColumns } from "@/lib/items-table";
+import { defaultVisibleColumns, SCHEMA_VERSION_COLUMN } from "@/lib/items-table";
 import type { EffectiveField } from "@/lib/types";
 
 export function ColumnPicker({
@@ -29,7 +29,11 @@ export function ColumnPicker({
     const next = new Set(shown);
     if (next.has(key)) next.delete(key);
     else next.add(key);
-    onChange(schema.filter((field) => next.has(field.key)).map((field) => field.key));
+    // Re-derive from `schema` so column order always follows the
+    // schema's own order rather than the order things were ticked.
+    // Metadata columns are not in `schema`, so they are appended.
+    const fields = schema.filter((field) => next.has(field.key)).map((field) => field.key);
+    onChange(next.has(SCHEMA_VERSION_COLUMN) ? [...fields, SCHEMA_VERSION_COLUMN] : fields);
   };
 
   return (
@@ -40,7 +44,7 @@ export function ColumnPicker({
             <Columns3 className="mr-1.5 h-3.5 w-3.5" />
             Columns
             <span className="ml-1.5 text-muted-foreground">
-              {visible.length}/{schema.length}
+              {visible.filter((key) => key !== SCHEMA_VERSION_COLUMN).length}/{schema.length}
             </span>
           </Button>
         }
@@ -82,6 +86,26 @@ export function ColumnPicker({
             </ul>
           </div>
         ))}
+
+        {/* Metadata — not part of the schema, so grouped apart. */}
+        <div className="border-t border-border/60">
+          <p className="px-3 pt-2 text-[11px] uppercase tracking-wider text-muted-foreground">
+            metadata
+          </p>
+          <ul className="p-1">
+            <li>
+              <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-accent">
+                <input
+                  type="checkbox"
+                  checked={shown.has(SCHEMA_VERSION_COLUMN)}
+                  onChange={() => toggle(SCHEMA_VERSION_COLUMN)}
+                  className="h-3.5 w-3.5 rounded border-border"
+                />
+                <span className="min-w-0 flex-1 truncate text-foreground">Schema version</span>
+              </label>
+            </li>
+          </ul>
+        </div>
       </PopoverContent>
     </Popover>
   );
