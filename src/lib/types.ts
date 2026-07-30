@@ -146,6 +146,53 @@ export interface DuplicateFieldDefinition {
   categories: { id: string; name: string; type: FieldType; item_count: number }[];
 }
 
+// ── Cross-category search (Phase 6) ──────────────────────────
+
+/**
+ * Operators accepted by search_items().
+ *
+ * The comparison operators cast through try_numeric() server-side, so a
+ * row holding "call for pricing" under a key being compared numerically
+ * is skipped rather than aborting the whole query.
+ */
+export type SearchOperator =
+  | "eq" | "neq"
+  | "gt" | "gte" | "lt" | "lte"
+  | "contains" | "starts_with"
+  | "in" | "is_null" | "not_null";
+
+export interface SearchFilter {
+  key: string;
+  op: SearchOperator;
+  /** Unused by is_null / not_null. `in` takes a comma-separated list. */
+  value?: string;
+}
+
+export interface SearchResult {
+  id: string;
+  category_id: string;
+  category_name: string;
+  /** "Electronics / Laptops / Gaming Laptops". */
+  category_path: string;
+  data: Record<string, unknown>;
+  rank: number;
+  /** Total matching rows before LIMIT — same on every row. */
+  total_count: number;
+}
+
+/** A field key in scope, from get_searchable_fields(). Drives autocomplete. */
+export interface SearchableField {
+  key: string;
+  label: string;
+  type: FieldType;
+  /** How many categories define this key. */
+  category_count: number;
+  /** True when at least one definition is linked to a shared attribute. */
+  is_shared_attribute: boolean;
+  /** Union of every option any category offers, for value autocomplete. */
+  options: string[];
+}
+
 export interface Item {
   id: string;
   category_id: string;
