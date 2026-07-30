@@ -117,12 +117,21 @@ $$;
 -- `total_count` rides along as a window function so pagination has a
 -- total without a second round trip counting the same predicate twice.
 -- ============================================================
+-- Adding a parameter creates an OVERLOAD rather than replacing, and two
+-- candidates make every PostgREST call ambiguous. Drop the old shape.
+DROP FUNCTION IF EXISTS public.search_items(TEXT, JSONB, UUID, INT, INT);
+
 CREATE OR REPLACE FUNCTION public.search_items(
   p_query       TEXT  DEFAULT NULL,
   p_filters     JSONB DEFAULT '[]'::jsonb,
   p_category_id UUID  DEFAULT NULL,
   p_limit       INT   DEFAULT 50,
-  p_offset      INT   DEFAULT 0
+  p_offset      INT   DEFAULT 0,
+  -- FALSE restricts to the category itself rather than its descendants.
+  -- The Items tab needs this: it can show one category's own rows, and
+  -- an export that quietly included the whole subtree would hand back
+  -- more than the screen showed.
+  p_include_subtree BOOLEAN DEFAULT true
 )
 RETURNS TABLE (
   id            UUID,
@@ -168,10 +177,14 @@ BEGIN
 
   -- ── Scope ─────────────────────────────────────────────────
   IF p_category_id IS NOT NULL THEN
-    where_sql := where_sql || format(
-      ' AND i.category_id IN (SELECT s.id FROM public.get_category_subtree(%L::uuid) s)',
-      p_category_id
-    );
+    IF p_include_subtree THEN
+      where_sql := where_sql || format(
+        ' AND i.category_id IN (SELECT s.id FROM public.get_category_subtree(%L::uuid) s)',
+        p_category_id
+      );
+    ELSE
+      where_sql := where_sql || format(' AND i.category_id = %L::uuid', p_category_id);
+    END IF;
   END IF;
 
   -- ── Structured filters, ANDed ─────────────────────────────

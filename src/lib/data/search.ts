@@ -9,6 +9,8 @@ export interface SearchParams {
   text?: string;
   filters?: SearchFilter[];
   categoryId?: string | null;
+  /** False restricts to the category itself rather than its descendants. */
+  includeSubtree?: boolean;
   page?: number;
   pageSize?: number;
 }
@@ -26,6 +28,7 @@ export async function searchItems(
     p_category_id: params.categoryId ?? null,
     p_limit: pageSize,
     p_offset: (page - 1) * pageSize,
+    p_include_subtree: params.includeSubtree ?? true,
   });
 
   if (error) throw new Error(`Search failed: ${error.message}`);

@@ -24,6 +24,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { ColumnPicker } from "@/components/data-center/column-picker";
 import { ColumnFilter } from "@/components/data-center/column-filter";
 import { ItemSheet } from "@/components/data-center/item-sheet";
+import { ExportButton } from "@/components/search/export-button";
 import { completenessOf, displayValueFor } from "@/lib/items";
 import {
   decodeFilters,
@@ -306,6 +307,15 @@ export function ItemsTable({
             </Button>
           )}
           <ColumnPicker schema={schema} visible={visible} onChange={updateVisible} />
+          {/* Scoped to whatever the table is currently showing —
+              including the subtree toggle, so what you export is what
+              you can see. */}
+          <ExportButton
+            categoryId={categoryId}
+            scopeName={categoryName}
+            query={includeSubtree ? "" : ""}
+            total={total}
+          />
           {canEdit && (
             <Button size="sm" onClick={() => setCreating(true)}>
               <Plus className="mr-1.5 h-3.5 w-3.5" />

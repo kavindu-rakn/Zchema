@@ -5,6 +5,7 @@ import { SearchBar } from "@/components/search/search-bar";
 import { SearchResults } from "@/components/search/search-results";
 import { SearchFacets } from "@/components/search/search-facets";
 import { SavedSearches } from "@/components/search/saved-searches";
+import { ExportButton } from "@/components/search/export-button";
 import { Button } from "@/components/ui/button";
 import {
   getSearchableFields,
@@ -110,24 +111,30 @@ export default async function SearchPage({ searchParams }: PageProps) {
           </aside>
 
           <main className="min-w-0 space-y-3">
-            <p className="text-sm text-muted-foreground">
-              <strong className="text-foreground">{result.total}</strong> result
-              {result.total === 1 ? "" : "s"}
-              {scope && (
-                <>
-                  {" in "}
-                  <Link
-                    href={`/data-center/${scope.id}`}
-                    className="text-primary hover:underline"
-                  >
-                    {scope.name}
-                  </Link>
-                </>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm text-muted-foreground">
+                <strong className="text-foreground">{result.total}</strong> result
+                {result.total === 1 ? "" : "s"}
+                {scope && (
+                  <>
+                    {" in "}
+                    <Link
+                      href={`/data-center/${scope.id}`}
+                      className="text-primary hover:underline"
+                    >
+                      {scope.name}
+                    </Link>
+                  </>
+                )}
+                {facets.categories.length > 1 && (
+                  <> across {facets.categories.length} categories</>
+                )}
+              </p>
+
+              {result.total > 0 && (
+                <ExportButton query={query} total={result.total} label="Export results" />
               )}
-              {facets.categories.length > 1 && (
-                <> across {facets.categories.length} categories</>
-              )}
-            </p>
+            </div>
 
             {result.rows.length === 0 ? (
               <div className="rounded-lg border border-dashed border-border py-16 text-center">

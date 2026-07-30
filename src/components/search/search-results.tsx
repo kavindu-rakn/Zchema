@@ -13,10 +13,21 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { LayoutList, Rows3 } from "lucide-react";
+import { Columns2, LayoutList, Rows3, X } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { CompareDialog } from "@/components/search/compare-dialog";
 import { cn } from "@/lib/utils";
 import type { SearchFilter, SearchResult } from "@/lib/types";
+
+/**
+ * Comparison caps out at 5 columns.
+ *
+ * Not an arbitrary limit: past five the table stops fitting and the
+ * feature stops answering "what is different about these" — which is
+ * the only reason anyone opens it.
+ */
+const MAX_COMPARE = 5;
 
 /** Split text on the search terms so matches can be marked. */
 function highlight(text: string, terms: string[]) {
@@ -91,6 +102,22 @@ export function SearchResults({
   filters: SearchFilter[];
 }) {
   const [grouped, setGrouped] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [comparing, setComparing] = useState(false);
+
+  const byId = useMemo(() => new Map(rows.map((row) => [row.id, row])), [rows]);
+  // Selection order is preserved so the comparison columns appear in the
+  // order they were picked, not in result order.
+  const chosen = selected.map((id) => byId.get(id)).filter(Boolean) as SearchResult[];
+
+  const toggle = (id: string) =>
+    setSelected((previous) =>
+      previous.includes(id)
+        ? previous.filter((other) => other !== id)
+        : previous.length >= MAX_COMPARE
+          ? previous
+          : [...previous, id]
+    );
 
   const groups = useMemo(() => {
     const map = new Map<string, { path: string; rows: SearchResult[] }>();
@@ -152,6 +179,9 @@ export function SearchResults({
                     terms={terms}
                     filters={filters}
                     showPath={false}
+                    selected={selected.includes(row.id)}
+                    selectable={selected.length < MAX_COMPARE || selected.includes(row.id)}
+                    onToggle={() => toggle(row.id)}
                   />
                 ))}
               </ul>
@@ -161,10 +191,56 @@ export function SearchResults({
       ) : (
         <ul className="space-y-2">
           {rows.map((row) => (
-            <ResultCard key={row.id} row={row} terms={terms} filters={filters} showPath />
+            <ResultCard
+              key={row.id}
+              row={row}
+              terms={terms}
+              filters={filters}
+              showPath
+              selected={selected.includes(row.id)}
+              selectable={selected.length < MAX_COMPARE || selected.includes(row.id)}
+              onToggle={() => toggle(row.id)}
+            />
           ))}
         </ul>
       )}
+
+      {/* Floating compare bar — appears only once something is picked,
+          so it costs nothing until it is wanted. */}
+      {chosen.length > 0 && (
+        <div className="sticky bottom-4 z-20 flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-card px-3 py-2 shadow-md">
+          <span className="text-sm text-foreground">
+            {chosen.length} selected
+            {chosen.length === 1 && (
+              <span className="ml-1 text-muted-foreground">— pick one more to compare</span>
+            )}
+            {chosen.length >= MAX_COMPARE && (
+              <span className="ml-1 text-muted-foreground">— that is the maximum</span>
+            )}
+          </span>
+
+          <div className="ml-auto flex items-center gap-1.5">
+            <Button
+              size="sm"
+              disabled={chosen.length < 2}
+              onClick={() => setComparing(true)}
+            >
+              <Columns2 className="mr-1.5 h-3.5 w-3.5" />
+              Compare
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-label="Clear the selection"
+              onClick={() => setSelected([])}
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <CompareDialog open={comparing} onOpenChange={setComparing} items={chosen} />
     </div>
   );
 }
@@ -174,20 +250,45 @@ function ResultCard({
   terms,
   filters,
   showPath,
+  selected,
+  selectable,
+  onToggle,
 }: {
   row: SearchResult;
   terms: string[];
   filters: SearchFilter[];
   showPath: boolean;
+  selected: boolean;
+  selectable: boolean;
+  onToggle: () => void;
 }) {
   const fields = relevantFields(row.data, terms, filters);
   const filterKeys = new Set(filters.map((filter) => filter.key));
 
   return (
-    <li>
+    <li className="relative">
+      {/* Outside the Link, not inside it: a checkbox nested in an
+          anchor is a click-target fight nobody wins. */}
+      <label
+        className="absolute left-3 top-3 z-10 flex cursor-pointer items-center"
+        title={selectable ? "Select to compare" : `You can compare up to ${MAX_COMPARE} items`}
+      >
+        <input
+          type="checkbox"
+          checked={selected}
+          disabled={!selectable}
+          onChange={onToggle}
+          aria-label={`Compare ${displayValue(row.data)}`}
+          className="h-3.5 w-3.5 rounded border-border disabled:opacity-40"
+        />
+      </label>
+
       <Link
         href={`/data-center/${row.category_id}?tab=items`}
-        className="block rounded-lg border border-border bg-card p-3 transition-colors hover:border-primary/40 hover:bg-accent/30"
+        className={cn(
+          "block rounded-lg border bg-card p-3 pl-9 transition-colors hover:border-primary/40 hover:bg-accent/30",
+          selected ? "border-primary/50 bg-primary/5" : "border-border"
+        )}
       >
         <p className="text-sm font-medium text-foreground">
           {highlight(displayValue(row.data), terms)}
