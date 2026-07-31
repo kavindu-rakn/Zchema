@@ -112,7 +112,7 @@ export function NewAttributeDialog({
                 if (!keyTouched) setKey(slugify(event.target.value).replace(/-/g, "_"));
               }}
               placeholder="Brand"
-              className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </label>
 
@@ -125,7 +125,7 @@ export function NewAttributeDialog({
                 setKey(event.target.value);
               }}
               placeholder="brand"
-              className="h-9 w-full rounded-md border border-border bg-background px-2 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="h-9 w-full rounded-md border border-input bg-background px-2 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
             {keyError && <span className="block text-[11px] text-destructive">{keyError}</span>}
           </label>
@@ -136,7 +136,7 @@ export function NewAttributeDialog({
               <select
                 value={type}
                 onChange={(event) => setType(event.target.value as FieldType)}
-                className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {FIELD_TYPES.map((entry) => (
                   <option key={entry} value={entry}>
@@ -152,7 +152,7 @@ export function NewAttributeDialog({
                 value={groupName}
                 onChange={(event) => setGroupName(event.target.value)}
                 placeholder="Commercial"
-                className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </label>
           </div>

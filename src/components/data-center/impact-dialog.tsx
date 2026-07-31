@@ -455,7 +455,7 @@ export function ImpactDialog({
             )}
             {title ?? `Review changes to ${categoryName}`}
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription aria-live="polite">
             {intro ? (
               intro
             ) : analyzing && !impact ? (
@@ -746,7 +746,7 @@ function ChangeCard({
                           onChange={(event) =>
                             onPatch({ value: coerceBackfill(event.target.value, field) })
                           }
-                          className="h-8 rounded-md border border-border bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          className="h-8 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           <option value="">Choose a value…</option>
                           <option value="true">true</option>
@@ -758,7 +758,7 @@ function ChangeCard({
                           onChange={(event) =>
                             onPatch({ value: coerceBackfill(event.target.value, field) })
                           }
-                          className="h-8 rounded-md border border-border bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          className="h-8 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           <option value="">Choose a value…</option>
                           {field.options.map((choice) => (
@@ -775,7 +775,7 @@ function ChangeCard({
                             onPatch({ value: coerceBackfill(event.target.value, field) })
                           }
                           placeholder="Value to write"
-                          className="h-8 w-full max-w-xs rounded-md border border-border bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          className="h-8 w-full max-w-xs rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         />
                       )}
                       {field && (

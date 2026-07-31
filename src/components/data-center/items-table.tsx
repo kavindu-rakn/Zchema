@@ -198,7 +198,7 @@ export function ItemsTable({
     <div className="space-y-3">
       {/* Health strip — each segment is a one-click filter */}
       {health && (
-        <div className="flex flex-wrap items-center gap-1 text-xs">
+        <div aria-live="polite" className="flex flex-wrap items-center gap-1 text-xs">
           <button
             type="button"
             onClick={() => setParams({ health: null, page: null })}
@@ -442,7 +442,7 @@ export function ItemsTable({
                       onChange={() =>
                         setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.id)))
                       }
-                      className="h-3.5 w-3.5 rounded border-border"
+                      className="h-3.5 w-3.5 rounded border-input"
                     />
                   </th>
                 )}
@@ -548,7 +548,7 @@ export function ItemsTable({
                           checked={selected.has(row.id)}
                           onClick={(event) => event.stopPropagation()}
                           onChange={() => toggleRow(row.id)}
-                          className="h-3.5 w-3.5 rounded border-border"
+                          className="h-3.5 w-3.5 rounded border-input"
                         />
                       </td>
                     )}

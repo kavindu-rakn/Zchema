@@ -218,7 +218,7 @@ export function DynamicForm({
               disabled={disabled}
               checked={Boolean(value)}
               onChange={(event) => setValue(field.key, event.target.checked)}
-              className="h-4 w-4 rounded border-border"
+              className="h-4 w-4 rounded border-input"
             />
             Yes
           </label>

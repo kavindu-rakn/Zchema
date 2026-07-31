@@ -144,7 +144,7 @@ export function ColumnFilter({
                       if (next.length === 0) onClear();
                       else apply({ value: next.join(",") });
                     }}
-                    className="h-3.5 w-3.5 rounded border-border"
+                    className="h-3.5 w-3.5 rounded border-input"
                   />
                   <span className="truncate text-foreground">{option}</span>
                 </label>

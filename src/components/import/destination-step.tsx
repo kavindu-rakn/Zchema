@@ -112,7 +112,7 @@ export function DestinationStep({
             value={destination.name}
             onChange={(event) => onChange({ ...destination, name: event.target.value })}
             placeholder="Laptops"
-            className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         </label>
       )}
@@ -210,7 +210,7 @@ export function DestinationStep({
                         value={plan.mappedTo ? plan.field.key : ""}
                         onChange={(event) => remap(plan.header, event.target.value || null)}
                         aria-label={`Map ${plan.header}`}
-                        className="h-7 w-full max-w-xs rounded border border-border bg-background px-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="h-7 w-full max-w-xs rounded border border-input bg-background px-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         <option value="">＋ Create a new field</option>
                         {targetSchema.map((field) => (

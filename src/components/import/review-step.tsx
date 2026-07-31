@@ -125,7 +125,7 @@ export function ReviewStep({
                   checked={!plan.skip}
                   onChange={(event) => patch(index, { skip: !event.target.checked })}
                   aria-label={`Import the ${plan.header} column`}
-                  className="h-3.5 w-3.5 shrink-0 rounded border-border"
+                  className="h-3.5 w-3.5 shrink-0 rounded border-input"
                 />
 
                 <input
@@ -133,7 +133,7 @@ export function ReviewStep({
                   disabled={plan.skip}
                   onChange={(event) => patchField(index, { label: event.target.value })}
                   aria-label={`Label for ${plan.header}`}
-                  className="h-7 min-w-0 flex-1 rounded border border-transparent bg-transparent px-1.5 text-sm text-foreground hover:border-border focus-visible:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="h-7 min-w-0 flex-1 rounded border border-transparent bg-transparent px-1.5 text-sm text-foreground hover:border-input focus-visible:border-input focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
 
                 <select
@@ -143,7 +143,7 @@ export function ReviewStep({
                     patchField(index, { type: event.target.value as FieldType })
                   }
                   aria-label={`Type for ${plan.header}`}
-                  className="h-7 shrink-0 rounded border border-border bg-background px-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="h-7 shrink-0 rounded border border-input bg-background px-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {FIELD_TYPES.map((type) => (
                     <option key={type} value={type}>
@@ -164,7 +164,7 @@ export function ReviewStep({
                     checked={plan.field.required}
                     disabled={plan.skip}
                     onChange={(event) => patchField(index, { required: event.target.checked })}
-                    className="h-3 w-3 rounded border-border"
+                    className="h-3 w-3 rounded border-input"
                   />
                   req
                 </label>
@@ -246,7 +246,7 @@ export function ReviewStep({
                     <input
                       value={plan.field.key}
                       onChange={(event) => patchField(index, { key: event.target.value })}
-                      className="h-7 w-full max-w-xs rounded border border-border bg-background px-1.5 font-mono text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="h-7 w-full max-w-xs rounded border border-input bg-background px-1.5 font-mono text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   </label>
 

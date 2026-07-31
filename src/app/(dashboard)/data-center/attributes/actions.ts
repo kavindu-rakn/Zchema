@@ -16,10 +16,21 @@ import { actionError } from "@/lib/action-result";
 import { validateFieldKey } from "@/lib/schema";
 import type { ActionResult, Attribute, FieldType } from "@/lib/types";
 
-function revalidateAttributeViews() {
+/** The library itself. Creating an attribute changes nothing else. */
+function revalidateLibrary() {
   revalidatePath("/data-center/attributes", "layout");
-  // Linked fields live on categories, and a label edit propagates into
-  // them, so the category workspace is stale too.
+}
+
+/**
+ * The library AND the category workspace.
+ *
+ * Only for mutations that actually reach into categories: a label edit
+ * propagates into every linked field, promotion writes `attribute_id`
+ * onto them, and deletion strips it. Creating an attribute touches no
+ * category, so it does not pay for this.
+ */
+function revalidateLibraryAndCategories() {
+  revalidatePath("/data-center/attributes", "layout");
   revalidatePath("/data-center", "layout");
 }
 
@@ -71,7 +82,7 @@ export async function createAttribute(input: {
       throw new Error(error.message);
     }
 
-    revalidateAttributeViews();
+    revalidateLibrary();
     return { ok: true, data: { id: data.id as string } };
   } catch (error) {
     return actionError(error, "Could not create the attribute.");
@@ -118,7 +129,7 @@ export async function updateAttribute(
     const { error } = await supabase.from("attributes").update(patch).eq("id", id);
     if (error) throw new Error(error.message);
 
-    revalidateAttributeViews();
+    revalidateLibraryAndCategories();
     return { ok: true, data: null };
   } catch (error) {
     return actionError(error, "Could not save the attribute.");
@@ -140,7 +151,7 @@ export async function deleteAttribute(id: string): Promise<ActionResult> {
     const { error } = await supabase.from("attributes").delete().eq("id", id);
     if (error) throw new Error(error.message);
 
-    revalidateAttributeViews();
+    revalidateLibraryAndCategories();
     return { ok: true, data: null };
   } catch (error) {
     return actionError(error, "Could not delete the attribute.");
@@ -178,7 +189,7 @@ export async function promoteFieldToAttribute(
 
     if (error) throw new Error(error.message);
 
-    revalidateAttributeViews();
+    revalidateLibraryAndCategories();
     return {
       ok: true,
       data: data as {

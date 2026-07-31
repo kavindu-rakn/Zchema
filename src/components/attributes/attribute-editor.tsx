@@ -124,7 +124,7 @@ export function AttributeEditor({
               value={label}
               disabled={!canEdit}
               onChange={(event) => setLabel(event.target.value)}
-              className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </label>
 
@@ -135,7 +135,7 @@ export function AttributeEditor({
               disabled={!canEdit}
               onChange={(event) => setGroupName(event.target.value)}
               placeholder="Physical, Commercial, Media…"
-              className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </label>
 
@@ -151,7 +151,7 @@ export function AttributeEditor({
                   <input
                     disabled
                     value={attribute.key}
-                    className="h-9 w-full cursor-not-allowed rounded-md border border-border bg-muted px-2 font-mono text-xs text-muted-foreground"
+                    className="h-9 w-full cursor-not-allowed rounded-md border border-input bg-muted px-2 font-mono text-xs text-muted-foreground"
                   />
                 </label>
               }
@@ -172,7 +172,7 @@ export function AttributeEditor({
                   <input
                     disabled
                     value={attribute.type}
-                    className="h-9 w-full cursor-not-allowed rounded-md border border-border bg-muted px-2 text-sm text-muted-foreground"
+                    className="h-9 w-full cursor-not-allowed rounded-md border border-input bg-muted px-2 text-sm text-muted-foreground"
                   />
                 </label>
               }
@@ -189,7 +189,7 @@ export function AttributeEditor({
               disabled={!canEdit}
               onChange={(event) => setUnit(event.target.value)}
               placeholder="kg, GB, cm…"
-              className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </label>
 
@@ -200,7 +200,7 @@ export function AttributeEditor({
               disabled={!canEdit}
               onChange={(event) => setDescription(event.target.value)}
               placeholder="Shown beside the input when someone fills this in"
-              className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </label>
         </div>

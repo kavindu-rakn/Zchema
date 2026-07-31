@@ -482,7 +482,7 @@ function VersionSelect({
       aria-label={label}
       value={value}
       onChange={(event) => onChange(Number(event.target.value))}
-      className="h-7 rounded-md border border-border bg-background px-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="h-7 rounded-md border border-input bg-background px-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       {versions.map((entry) => (
         <option key={entry.id} value={entry.version}>

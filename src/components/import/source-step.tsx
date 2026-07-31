@@ -161,7 +161,7 @@ export function SourceStep({
           rows={8}
           placeholder={"name,brand,ram\nZenBook,ASUS,16 GB"}
           aria-label="Paste your data"
-          className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       ) : (
         <div className="flex gap-2">
@@ -171,7 +171,7 @@ export function SourceStep({
               value={url}
               onChange={(event) => setUrl(event.target.value)}
               placeholder="https://example.com/products.csv"
-              className="h-9 w-full rounded-md border border-border bg-background pl-7 pr-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="h-9 w-full rounded-md border border-input bg-background pl-7 pr-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </div>
           <Button variant="outline" onClick={fetchUrl} disabled={!url.trim() || fetching}>

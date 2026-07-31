@@ -72,7 +72,7 @@ export function OptionsEditor({
           }}
           placeholder="Add an option, or paste a list"
           aria-label="Add an option"
-          className="h-7 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
         <button
           type="button"

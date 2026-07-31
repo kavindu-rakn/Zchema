@@ -279,7 +279,7 @@ function ResultCard({
           disabled={!selectable}
           onChange={onToggle}
           aria-label={`Compare ${displayValue(row.data)}`}
-          className="h-3.5 w-3.5 rounded border-border disabled:opacity-40"
+          className="h-3.5 w-3.5 rounded border-input disabled:opacity-40"
         />
       </label>
 
