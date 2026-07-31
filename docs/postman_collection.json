@@ -1,149 +1,989 @@
 {
-	"info": {
-		"_postman_id": "b3e5a59f-d5b4-4b53-9f5a-c63e2c384e55",
-		"name": "SchemaShift API",
-		"description": "API collection for SchemaShift endpoints",
-		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
-	},
-	"item": [
-		{
-			"name": "Categories",
-			"item": [
-				{
-					"name": "Get Items by Category",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/categories/{{categoryId}}/items",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"categories",
-								"{{categoryId}}",
-								"items"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Create Item",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"data\": {\n        \"name\": \"New Item\",\n        \"description\": \"Item description\"\n    }\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/categories/{{categoryId}}/items",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"categories",
-								"{{categoryId}}",
-								"items"
-							]
-						}
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Items",
-			"item": [
-				{
-					"name": "Get Item",
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/items/{{itemId}}",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"items",
-								"{{itemId}}"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Update Item",
-					"request": {
-						"method": "PUT",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"data\": {\n        \"name\": \"Updated Item\"\n    }\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/items/{{itemId}}",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"items",
-								"{{itemId}}"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Delete Item",
-					"request": {
-						"method": "DELETE",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/items/{{itemId}}",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"items",
-								"{{itemId}}"
-							]
-						}
-					},
-					"response": []
-				}
-			]
-		}
-	],
-	"variable": [
-		{
-			"key": "baseUrl",
-			"value": "http://localhost:3000"
-		},
-		{
-			"key": "categoryId",
-			"value": "your-category-uuid-here"
-		},
-		{
-			"key": "itemId",
-			"value": "your-item-uuid-here"
-		}
-	]
+  "info": {
+    "_postman_id": "b3e5a59f-d5b4-4b53-9f5a-c63e2c384e55",
+    "name": "SchemaShift API",
+    "description": "SchemaShift has no bespoke REST layer. Mutations from the UI go through Next.js Server Actions, which are not addressable as a stable API. What IS addressable, and what this collection covers:\n\n  1. The Supabase PostgREST surface. Every SQL function in supabase/*.sql is callable at /rest/v1/rpc/<name>, subject to exactly the same RLS as the app.\n  2. /api/export, the one HTTP route the app itself defines.\n\nSet supabaseUrl, anonKey and accessToken (a signed-in user's JWT) before running anything. Role matters: writes need SCHEMA_ADMIN or DATA_EDITOR, and RLS will return zero rows rather than erroring when the role is wrong.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "supabaseUrl",
+      "value": "https://YOUR-PROJECT.supabase.co"
+    },
+    {
+      "key": "anonKey",
+      "value": ""
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "categoryId",
+      "value": ""
+    },
+    {
+      "key": "attributeId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Schema composition",
+      "item": [
+        {
+          "name": "List categories",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "apikey",
+                "value": "{{anonKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{supabaseUrl}}/rest/v1/categories?select=*&order=position",
+              "host": [
+                "{{supabaseUrl}}"
+              ],
+              "path": [
+                "rest",
+                "v1",
+                "categories"
+              ],
+              "query": [
+                {
+                  "key": "select",
+                  "value": "*"
+                },
+                {
+                  "key": "order",
+                  "value": "position"
+                }
+              ]
+            },
+            "description": "Raw table read. RLS: readable by all authenticated users."
+          },
+          "response": []
+        },
+        {
+          "name": "get_category_tree",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "apikey",
+                "value": "{{anonKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{supabaseUrl}}/rest/v1/rpc/get_category_tree",
+              "host": [
+                "{{supabaseUrl}}"
+              ],
+              "path": [
+                "rest",
+                "v1",
+                "rpc",
+                "get_category_tree"
+              ]
+            },
+            "description": "The whole tree with counts, returned flat, in one call so the UI never N+1s."
+          },
+          "response": []
+        },
+        {
+          "name": "get_effective_schema",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "apikey",
+                "value": "{{anonKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"p_category_id\": \"{{categoryId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{supabaseUrl}}/rest/v1/rpc/get_effective_schema",
+              "host": [
+                "{{supabaseUrl}}"
+              ],
+              "path": [
+                "rest",
+                "v1",
+                "rpc",
+                "get_effective_schema"
+              ]
+            },
+            "description": "The composed schema for one category: ancestor fields folded root-to-leaf with overrides applied. This is the authority the TypeScript mirror must match."
+          },
+          "response": []
+        },
+        {
+          "name": "get_category_ancestors",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "apikey",
+                "value": "{{anonKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"p_category_id\": \"{{categoryId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{supabaseUrl}}/rest/v1/rpc/get_category_ancestors",
+              "host": [
+                "{{supabaseUrl}}"
+              ],
+              "path": [
+                "rest",
+                "v1",
+                "rpc",
+                "get_category_ancestors"
+              ]
+            },
+            "description": "The chain, root-first. depth 0 is the target itself."
+          },
+          "response": []
+        },
+        {
+          "name": "get_category_subtree",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "apikey",
+                "value": "{{anonKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"p_category_id\": \"{{categoryId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{supabaseUrl}}/rest/v1/rpc/get_category_subtree",
+              "host": [
+                "{{supabaseUrl}}"
+              ],
+              "path": [
+                "rest",
+                "v1",
+                "rpc",
+                "get_category_subtree"
+              ]
+            },
+            "description": "The node and every descendant."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Impact analysis",
+      "item": [
+        {
+          "name": "analyze_schema_change",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "apikey",
+                "value": "{{anonKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"p_category_id\": \"{{categoryId}}\",\n  \"p_new_own_fields\": [\n    {\n      \"key\": \"brand\",\n      \"label\": \"Brand\",\n      \"type\": \"string\",\n      \"required\": true,\n      \"position\": 0\n    }\n  ],\n  \"p_new_overrides\": {}\n}"
+            },
+            "url": {
+              "raw": "{{supabaseUrl}}/rest/v1/rpc/analyze_schema_change",
+              "host": [
+                "{{supabaseUrl}}"
+              ],
+              "path": [
+                "rest",
+                "v1",
+                "rpc",
+                "analyze_schema_change"
+              ]
+            },
+            "description": "READ-ONLY. The blast radius of a proposed change: affected categories, item counts, per-change severity, and whether it is blocked outright. Called on every keystroke by the editor's severity badge, so it must never write."
+          },
+          "response": []
+        },
+        {
+          "name": "apply_schema_change",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "apikey",
+                "value": "{{anonKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"p_category_id\": \"{{categoryId}}\",\n  \"p_new_own_fields\": [\n    {\n      \"key\": \"brand\",\n      \"label\": \"Brand\",\n      \"type\": \"string\",\n      \"required\": true,\n      \"position\": 0\n    }\n  ],\n  \"p_new_overrides\": {},\n  \"p_remediations\": {\n    \"brand\": {\n      \"strategy\": \"backfill\",\n      \"value\": \"Unknown\"\n    }\n  },\n  \"p_changed_by\": null\n}"
+            },
+            "url": {
+              "raw": "{{supabaseUrl}}/rest/v1/rpc/apply_schema_change",
+              "host": [
+                "{{supabaseUrl}}"
+              ],
+              "path": [
+                "rest",
+                "v1",
+                "rpc",
+                "apply_schema_change"
+              ]
+            },
+            "description": "Applies the change in ONE transaction, with a remediation per destructive consequence. Refuses when a destructive change has no strategy; 'discard' additionally requires \"confirm\": true."
+          },
+          "response": []
+        },
+        {
+          "name": "rollback_schema_version",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "apikey",
+                "value": "{{anonKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"p_category_id\": \"{{categoryId}}\",\n  \"p_target_version\": 1\n}"
+            },
+            "url": {
+              "raw": "{{supabaseUrl}}/rest/v1/rpc/rollback_schema_version",
+              "host": [
+                "{{supabaseUrl}}"
+              ],
+              "path": [
+                "rest",
+                "v1",
+                "rpc",
+                "rollback_schema_version"
+              ]
+            },
+            "description": "Restores a recorded version's authored schema and writes a NEW FORWARD version. History is never rewritten. Item data is NOT reverted."
+          },
+          "response": []
+        },
+        {
+          "name": "analyze_category_move",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "apikey",
+                "value": "{{anonKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"p_category_id\": \"{{categoryId}}\",\n  \"p_new_parent_id\": null\n}"
+            },
+            "url": {
+              "raw": "{{supabaseUrl}}/rest/v1/rpc/analyze_category_move",
+              "host": [
+                "{{supabaseUrl}}"
+              ],
+              "path": [
+                "rest",
+                "v1",
+                "rpc",
+                "analyze_category_move"
+              ]
+            },
+            "description": "Same return shape as analyze_schema_change, because it is the same question: a re-parent swaps the entire inherited half of the subtree's schema."
+          },
+          "response": []
+        },
+        {
+          "name": "apply_category_move",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "apikey",
+                "value": "{{anonKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"p_category_id\": \"{{categoryId}}\",\n  \"p_new_parent_id\": null,\n  \"p_remediations\": {},\n  \"p_changed_by\": null\n}"
+            },
+            "url": {
+              "raw": "{{supabaseUrl}}/rest/v1/rpc/apply_category_move",
+              "host": [
+                "{{supabaseUrl}}"
+              ],
+              "path": [
+                "rest",
+                "v1",
+                "rpc",
+                "apply_category_move"
+              ]
+            },
+            "description": "Re-parent plus item reconciliation, one transaction."
+          },
+          "response": []
+        },
+        {
+          "name": "preview_category_delete",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "apikey",
+                "value": "{{anonKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"p_category_id\": \"{{categoryId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{supabaseUrl}}/rest/v1/rpc/preview_category_delete",
+              "host": [
+                "{{supabaseUrl}}"
+              ],
+              "path": [
+                "rest",
+                "v1",
+                "rpc",
+                "preview_category_delete"
+              ]
+            },
+            "description": "What a delete would destroy, and which values would survive a move to the parent."
+          },
+          "response": []
+        },
+        {
+          "name": "delete_category_safely",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "apikey",
+                "value": "{{anonKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"p_category_id\": \"{{categoryId}}\",\n  \"p_move_items_to_parent\": true\n}"
+            },
+            "url": {
+              "raw": "{{supabaseUrl}}/rest/v1/rpc/delete_category_safely",
+              "host": [
+                "{{supabaseUrl}}"
+              ],
+              "path": [
+                "rest",
+                "v1",
+                "rpc",
+                "delete_category_safely"
+              ]
+            },
+            "description": "Delete, optionally rescuing every item in the subtree to the parent first."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Items",
+      "item": [
+        {
+          "name": "query_items",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "apikey",
+                "value": "{{anonKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"p_category_id\": \"{{categoryId}}\",\n  \"p_include_subtree\": false,\n  \"p_sort_key\": null,\n  \"p_sort_type\": \"string\",\n  \"p_sort_dir\": \"asc\",\n  \"p_filters\": [],\n  \"p_limit\": 50,\n  \"p_offset\": 0,\n  \"p_health\": null,\n  \"p_stale_before\": null\n}"
+            },
+            "url": {
+              "raw": "{{supabaseUrl}}/rest/v1/rpc/query_items",
+              "host": [
+                "{{supabaseUrl}}"
+              ],
+              "path": [
+                "rest",
+                "v1",
+                "rpc",
+                "query_items"
+              ]
+            },
+            "description": "Server-side sort, filter and pagination. Sorting is type-aware: sorting data->>'ram_gb' as text puts 8 after 16."
+          },
+          "response": []
+        },
+        {
+          "name": "get_item_health_counts",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "apikey",
+                "value": "{{anonKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"p_category_id\": \"{{categoryId}}\",\n  \"p_include_subtree\": true\n}"
+            },
+            "url": {
+              "raw": "{{supabaseUrl}}/rest/v1/rpc/get_item_health_counts",
+              "host": [
+                "{{supabaseUrl}}"
+              ],
+              "path": [
+                "rest",
+                "v1",
+                "rpc",
+                "get_item_health_counts"
+              ]
+            },
+            "description": "Totals for the header strip: total, incomplete, orphaned."
+          },
+          "response": []
+        },
+        {
+          "name": "move_items",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "apikey",
+                "value": "{{anonKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"p_item_ids\": [],\n  \"p_target_category_id\": \"{{categoryId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{supabaseUrl}}/rest/v1/rpc/move_items",
+              "host": [
+                "{{supabaseUrl}}"
+              ],
+              "path": [
+                "rest",
+                "v1",
+                "rpc",
+                "move_items"
+              ]
+            },
+            "description": "Move items between categories, reconciling each item's data against the target schema. Values whose key the target lacks become orphaned data."
+          },
+          "response": []
+        },
+        {
+          "name": "import_items",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "apikey",
+                "value": "{{anonKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"p_category_id\": \"{{categoryId}}\",\n  \"p_new_category\": {},\n  \"p_own_fields\": [],\n  \"p_rows\": [\n    {\n      \"brand\": \"ASUS\"\n    }\n  ],\n  \"p_changed_by\": null\n}"
+            },
+            "url": {
+              "raw": "{{supabaseUrl}}/rest/v1/rpc/import_items",
+              "host": [
+                "{{supabaseUrl}}"
+              ],
+              "path": [
+                "rest",
+                "v1",
+                "rpc",
+                "import_items"
+              ]
+            },
+            "description": "Create or extend a category and insert rows, atomically. Keys already in the effective chain are ignored rather than duplicated."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Attributes",
+      "item": [
+        {
+          "name": "get_attributes_with_usage",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "apikey",
+                "value": "{{anonKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{supabaseUrl}}/rest/v1/rpc/get_attributes_with_usage",
+              "host": [
+                "{{supabaseUrl}}"
+              ],
+              "path": [
+                "rest",
+                "v1",
+                "rpc",
+                "get_attributes_with_usage"
+              ]
+            },
+            "description": "The whole registry plus per-attribute usage counts, in one call."
+          },
+          "response": []
+        },
+        {
+          "name": "get_attribute_usage",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "apikey",
+                "value": "{{anonKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"p_attribute_id\": \"{{attributeId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{supabaseUrl}}/rest/v1/rpc/get_attribute_usage",
+              "host": [
+                "{{supabaseUrl}}"
+              ],
+              "path": [
+                "rest",
+                "v1",
+                "rpc",
+                "get_attribute_usage"
+              ]
+            },
+            "description": "Every category referencing one attribute, with its item counts."
+          },
+          "response": []
+        },
+        {
+          "name": "find_duplicate_field_definitions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "apikey",
+                "value": "{{anonKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{supabaseUrl}}/rest/v1/rpc/find_duplicate_field_definitions",
+              "host": [
+                "{{supabaseUrl}}"
+              ],
+              "path": [
+                "rest",
+                "v1",
+                "rpc",
+                "find_duplicate_field_definitions"
+              ]
+            },
+            "description": "Keys defined on two or more categories with nothing linking them: the promotion candidates."
+          },
+          "response": []
+        },
+        {
+          "name": "promote_field_to_attribute",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "apikey",
+                "value": "{{anonKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"p_category_id\": \"{{categoryId}}\",\n  \"p_field_key\": \"brand\",\n  \"p_group_name\": \"Commercial\"\n}"
+            },
+            "url": {
+              "raw": "{{supabaseUrl}}/rest/v1/rpc/promote_field_to_attribute",
+              "host": [
+                "{{supabaseUrl}}"
+              ],
+              "path": [
+                "rest",
+                "v1",
+                "rpc",
+                "promote_field_to_attribute"
+              ]
+            },
+            "description": "Creates the attribute and back-links every definition WHOSE TYPE MATCHES. Mismatches are reported, never coerced."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Search",
+      "item": [
+        {
+          "name": "search_items",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "apikey",
+                "value": "{{anonKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"p_query\": \"sony\",\n  \"p_filters\": [\n    {\n      \"key\": \"price\",\n      \"op\": \"gt\",\n      \"value\": \"500\"\n    }\n  ],\n  \"p_category_id\": null,\n  \"p_limit\": 50,\n  \"p_offset\": 0,\n  \"p_include_subtree\": true\n}"
+            },
+            "url": {
+              "raw": "{{supabaseUrl}}/rest/v1/rpc/search_items",
+              "host": [
+                "{{supabaseUrl}}"
+              ],
+              "path": [
+                "rest",
+                "v1",
+                "rpc",
+                "search_items"
+              ]
+            },
+            "description": "Free text plus structured filters, across the catalog or one subtree. Numeric comparisons go through try_numeric(), so one row holding \"call for pricing\" is skipped rather than aborting the whole query."
+          },
+          "response": []
+        },
+        {
+          "name": "search_facets",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "apikey",
+                "value": "{{anonKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"p_query\": \"sony\",\n  \"p_filters\": [],\n  \"p_category_id\": null\n}"
+            },
+            "url": {
+              "raw": "{{supabaseUrl}}/rest/v1/rpc/search_facets",
+              "host": [
+                "{{supabaseUrl}}"
+              ],
+              "path": [
+                "rest",
+                "v1",
+                "rpc",
+                "search_facets"
+              ]
+            },
+            "description": "Facet counts over the WHOLE match set, not the visible page — otherwise the numbers shift as you paginate."
+          },
+          "response": []
+        },
+        {
+          "name": "get_searchable_fields",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "apikey",
+                "value": "{{anonKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"p_category_id\": null\n}"
+            },
+            "url": {
+              "raw": "{{supabaseUrl}}/rest/v1/rpc/get_searchable_fields",
+              "host": [
+                "{{supabaseUrl}}"
+              ],
+              "path": [
+                "rest",
+                "v1",
+                "rpc",
+                "get_searchable_fields"
+              ]
+            },
+            "description": "Field keys in scope with types and category counts. Drives autocomplete."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "App routes",
+      "item": [
+        {
+          "name": "Export (streamed CSV or JSON)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/export?format=csv&q=brand:Sony&orphaned=0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "export"
+              ],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "csv",
+                  "description": "csv | json"
+                },
+                {
+                  "key": "q",
+                  "value": "brand:Sony",
+                  "description": "Query DSL string"
+                },
+                {
+                  "key": "category",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Explicit category scope; overrides in:"
+                },
+                {
+                  "key": "subtree",
+                  "value": "0",
+                  "disabled": true,
+                  "description": "0 restricts to the category itself"
+                },
+                {
+                  "key": "orphaned",
+                  "value": "0",
+                  "description": "1 includes __orphaned values"
+                }
+              ]
+            },
+            "description": "The only HTTP route the app defines. Streamed rather than assembled — rows are pulled a page at a time, so peak memory is one page regardless of export size. Requires a signed-in session cookie; RLS still applies underneath."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
 }
