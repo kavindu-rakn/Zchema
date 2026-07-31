@@ -490,3 +490,41 @@ export async function deleteCategory(
     return actionError(error, "Could not delete the category.");
   }
 }
+
+/**
+ * Persist a new sibling order.
+ *
+ * Takes the WHOLE sibling list renumbered from zero rather than a pair
+ * to swap: seeded `position` values are frequently all 0, and swapping
+ * two zeroes changes nothing visible. Renumbering makes the order
+ * well-defined from then on.
+ *
+ * Reordering is not a schema change — no field moves, no item is
+ * touched — so it does not go through impact analysis. Re-PARENTING
+ * does, and that is `applyCategoryMove`.
+ */
+export async function reorderCategories(
+  updates: { id: string; position: number }[]
+): Promise<ActionResult> {
+  try {
+    await requireSchemaAdmin();
+    if (updates.length === 0) return { ok: true, data: null };
+
+    const supabase = await createClient();
+
+    // Sequential rather than Promise.all: these are a handful of rows,
+    // and a partial failure is easier to reason about in order.
+    for (const update of updates) {
+      const { error } = await supabase
+        .from("categories")
+        .update({ position: update.position })
+        .eq("id", update.id);
+      if (error) throw new Error(error.message);
+    }
+
+    revalidateCategoryViews();
+    return { ok: true, data: null };
+  } catch (error) {
+    return actionError(error, "Could not save the new order.");
+  }
+}
