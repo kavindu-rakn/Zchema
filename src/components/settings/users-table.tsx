@@ -74,7 +74,7 @@ export function UsersTable({
                     onChange={(event) =>
                       changeRole(profile.id, event.target.value as UserRole)
                     }
-                    className="rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                    className="rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                   >
                     {ROLES.map((role) => (
                       <option key={role.value} value={role.value}>

@@ -112,7 +112,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
 
           <main className="min-w-0 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm text-muted-foreground">
+              <p aria-live="polite" className="text-sm text-muted-foreground">
                 <strong className="text-foreground">{result.total}</strong> result
                 {result.total === 1 ? "" : "s"}
                 {scope && (

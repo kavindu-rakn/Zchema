@@ -198,7 +198,7 @@ function BlueprintFieldRow({
             onPatch({ label: event.target.value, key: deriveKey(event.target.value) })
           }
           placeholder="Field label"
-          className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
 
         <input
@@ -206,14 +206,14 @@ function BlueprintFieldRow({
           disabled={!canEdit}
           onChange={(event) => onPatch({ key: event.target.value })}
           placeholder="key"
-          className="h-8 w-28 rounded-md border border-border bg-background px-2 font-mono text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-8 w-28 rounded-md border border-input bg-background px-2 font-mono text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
 
         <select
           value={field.type}
           disabled={!canEdit}
           onChange={(event) => onPatch({ type: event.target.value as FieldType })}
-          className="h-8 rounded-md border border-border bg-background px-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-8 rounded-md border border-input bg-background px-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {FIELD_TYPES.map((type) => (
             <option key={type} value={type}>
@@ -228,7 +228,7 @@ function BlueprintFieldRow({
           onChange={(event) => onPatch({ unit: event.target.value || undefined })}
           placeholder="unit"
           title="Display-only unit, e.g. kg or GB"
-          className="h-8 w-16 rounded-md border border-border bg-background px-2 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-8 w-16 rounded-md border border-input bg-background px-2 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
 
         <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
@@ -237,7 +237,7 @@ function BlueprintFieldRow({
             checked={field.required}
             disabled={!canEdit}
             onChange={(event) => onPatch({ required: event.target.checked })}
-            className="h-3.5 w-3.5 rounded border-border"
+            className="h-3.5 w-3.5 rounded border-input"
           />
           req
         </label>
@@ -260,7 +260,7 @@ function BlueprintFieldRow({
           disabled={!canEdit}
           onChange={(event) => onPatch({ help_text: event.target.value || undefined })}
           placeholder="Help text (optional)"
-          className="h-7 w-full rounded-md border border-border bg-background px-2 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-7 w-full rounded-md border border-input bg-background px-2 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
 
         {(field.type === "select" || field.type === "multiselect") && (

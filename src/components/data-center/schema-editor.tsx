@@ -35,6 +35,7 @@ import { DynamicForm } from "@/components/data-center/dynamic-form";
 import { OptionsEditor } from "@/components/data-center/options-editor";
 import { FieldProvenance } from "@/components/data-center/field-provenance";
 import { ImpactDialog } from "@/components/data-center/impact-dialog";
+import { Hint } from "@/components/onboarding/hint";
 import { AttributePicker } from "@/components/attributes/attribute-picker";
 import { SaveAsBlueprint } from "@/components/blueprints/save-as-blueprint";
 import {
@@ -97,11 +98,14 @@ export function SchemaEditor({
   category,
   chain,
   canEdit,
+  dismissedHints = [],
 }: {
   category: Category;
   /** Ancestors root-first, INCLUDING this category last. */
   chain: Pick<Category, "id" | "name" | "own_fields" | "overrides">[];
   canEdit: boolean;
+  /** Onboarding hints this user has already dismissed. */
+  dismissedHints?: string[];
 }) {
   const router = useRouter();
   const [ownFields, setOwnFields] = useState<DraftField[]>(() =>
@@ -427,6 +431,18 @@ export function SchemaEditor({
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0 space-y-4">
+          {/* The entire tutorial: one line, pointing at something
+              already on screen. A hint that explains a concept you
+              cannot see is a tour, and tours get skipped. */}
+          {inherited.length > 0 && (
+            <Hint hintKey="inherited-block" dismissed={dismissedHints} tone="primary">
+              These <strong>{inherited.length} fields</strong> are not defined here — they come
+              from {groups.map(([, group]) => group.name).join(" and ")}, further up the tree.
+              Add a field below and only {category.name} and its descendants get it; the rest of
+              the tree is untouched.
+            </Hint>
+          )}
+
           {/* ── Inherited ─────────────────────────────────── */}
           <section className="rounded-lg border border-border bg-card">
             <header className="flex items-center gap-2 border-b border-border px-4 py-2">
@@ -570,7 +586,7 @@ export function SchemaEditor({
                                         onChange={(event) =>
                                           patchOverride(field.key, { label: event.target.value })
                                         }
-                                        className="h-8 w-full rounded-md border border-border bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                        className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                       />
                                     </label>
 
@@ -585,7 +601,7 @@ export function SchemaEditor({
                                             help_text: event.target.value,
                                           })
                                         }
-                                        className="h-8 w-full rounded-md border border-border bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                        className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                       />
                                     </label>
 
@@ -601,7 +617,7 @@ export function SchemaEditor({
                                             <input
                                               disabled
                                               value={field.type}
-                                              className="h-8 w-full cursor-not-allowed rounded-md border border-border bg-muted px-2 text-xs text-muted-foreground"
+                                              className="h-8 w-full cursor-not-allowed rounded-md border border-input bg-muted px-2 text-xs text-muted-foreground"
                                             />
                                           </label>
                                         }
@@ -621,7 +637,7 @@ export function SchemaEditor({
                                             required: event.target.checked,
                                           })
                                         }
-                                        className="h-3.5 w-3.5 rounded border-border"
+                                        className="h-3.5 w-3.5 rounded border-input"
                                       />
                                       <span className="text-xs text-foreground">Required here</span>
                                     </label>
@@ -843,7 +859,7 @@ function FieldRow({
             onPatch(field._locked ? { label } : { label, key: deriveKey(label) });
           }}
           placeholder="Field label"
-          className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
 
         <div className="flex shrink-0 items-center gap-1">
@@ -890,7 +906,7 @@ function FieldRow({
               disabled={!canEdit}
               onChange={(event) => onPatch({ key: event.target.value })}
               placeholder="key"
-              className="h-8 w-28 rounded-md border border-border bg-background px-2 font-mono text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="h-8 w-28 rounded-md border border-input bg-background px-2 font-mono text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           )}
 
@@ -898,7 +914,7 @@ function FieldRow({
             value={field.type}
             disabled={!canEdit}
             onChange={(event) => onPatch({ type: event.target.value as FieldType })}
-            className="h-8 rounded-md border border-border bg-background px-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="h-8 rounded-md border border-input bg-background px-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {FIELD_TYPES.map((type) => (
               <option key={type} value={type}>
@@ -913,7 +929,7 @@ function FieldRow({
               checked={field.required}
               disabled={!canEdit}
               onChange={(event) => onPatch({ required: event.target.checked })}
-              className="h-3.5 w-3.5 rounded border-border"
+              className="h-3.5 w-3.5 rounded border-input"
             />
             req
           </label>

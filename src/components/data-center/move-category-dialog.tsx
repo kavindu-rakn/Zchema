@@ -42,6 +42,7 @@ export function MoveCategoryDialog({
   category,
   tree,
   schema = [],
+  initialTargetId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -49,10 +50,17 @@ export function MoveCategoryDialog({
   tree: CategoryNode[];
   /** Current effective schema — types the backfill inputs. */
   schema?: EffectiveField[];
+  /**
+   * Destination already chosen — a drop or a keystroke. The picker
+   * still renders so it can be corrected, but the analysis runs
+   * immediately rather than making the user re-pick what they just
+   * dragged onto.
+   */
+  initialTargetId?: string | null;
 }) {
   const router = useRouter();
-  const [target, setTarget] = useState<string | null>(null);
-  const [touched, setTouched] = useState(false);
+  const [target, setTarget] = useState<string | null>(initialTargetId ?? null);
+  const [touched, setTouched] = useState(initialTargetId !== undefined);
   const [impact, setImpact] = useState<SchemaImpact | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
@@ -96,8 +104,8 @@ export function MoveCategoryDialog({
   // with after the fact.
   const handleOpenChange = (next: boolean) => {
     if (!next) {
-      setTarget(null);
-      setTouched(false);
+      setTarget(initialTargetId ?? null);
+      setTouched(initialTargetId !== undefined);
       setImpact(null);
       setAnalysisError(null);
     }

@@ -12,6 +12,7 @@ import { Search } from "lucide-react";
 
 import { CategoryTree } from "@/components/data-center/category-tree";
 import { NewRootCategory } from "@/components/data-center/new-root-category";
+import { ImportEntry } from "@/components/import/import-entry";
 import { cn } from "@/lib/utils";
 import type { CategoryNode } from "@/lib/types";
 
@@ -171,7 +172,7 @@ export function Rail({
               onChange={(event) => setFilter(event.target.value)}
               placeholder="Filter categories…"
               aria-label="Filter categories"
-              className="h-8 w-full rounded-md border border-border bg-background pl-7 pr-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="h-8 w-full rounded-md border border-input bg-background pl-7 pr-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </div>
         </div>
@@ -188,8 +189,9 @@ export function Rail({
           />
         </nav>
 
-        <div className="shrink-0 border-t border-border p-2">
+        <div className="shrink-0 space-y-0.5 border-t border-border p-2">
           <NewRootCategory />
+          {canEdit && <ImportEntry tree={tree} />}
         </div>
       </aside>
 

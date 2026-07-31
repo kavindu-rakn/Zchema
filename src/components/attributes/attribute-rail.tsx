@@ -73,7 +73,7 @@ export function AttributeRail({
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Filter attributes"
             aria-label="Filter attributes"
-            className="h-8 w-full rounded-md border border-border bg-background pl-7 pr-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="h-8 w-full rounded-md border border-input bg-background pl-7 pr-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         </div>
       </div>

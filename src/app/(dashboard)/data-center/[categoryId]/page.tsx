@@ -15,6 +15,7 @@ import { ItemsTable } from "@/components/data-center/items-table";
 import { HistoryTimeline } from "@/components/data-center/history-timeline";
 import { getItemHealthCounts, queryItems } from "@/lib/data/items";
 import { getSchemaVersions, getStaleItems } from "@/lib/data/schema-versions";
+import { getDismissedHints } from "@/app/(dashboard)/onboarding/actions";
 import { commonFields, decodeFilters } from "@/lib/items-table";
 import type { EffectiveField } from "@/lib/types";
 
@@ -64,6 +65,8 @@ export default async function CategoryDetailPage({ params, searchParams }: PageP
     ]);
 
   const tree = buildCategoryTree(flatTree);
+  // Only the Schema tab shows a hint today, so only it pays for the read.
+  const dismissedHints = tab === "schema" ? await getDismissedHints() : [];
   const canEdit = role === "SCHEMA_ADMIN";
   // Item data is editable by DATA_EDITOR too — schema is not.
   const canEditItems = role === "SCHEMA_ADMIN" || role === "DATA_EDITOR";
@@ -377,6 +380,7 @@ export default async function CategoryDetailPage({ params, searchParams }: PageP
               })),
             ]}
             canEdit={canEdit}
+            dismissedHints={dismissedHints}
           />
         )}
         {tab === "items" && (
@@ -395,6 +399,7 @@ export default async function CategoryDetailPage({ params, searchParams }: PageP
             tree={tree}
             includeSubtree={includeSubtree}
             hasChildren={children.length > 0}
+            subtreeItemCount={subtreeItems}
             subtreeCategoryCount={subtreeIds.length}
             health={itemHealth}
           />

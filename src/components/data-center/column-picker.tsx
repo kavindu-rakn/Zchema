@@ -74,7 +74,7 @@ export function ColumnPicker({
                       type="checkbox"
                       checked={shown.has(field.key)}
                       onChange={() => toggle(field.key)}
-                      className="h-3.5 w-3.5 rounded border-border"
+                      className="h-3.5 w-3.5 rounded border-input"
                     />
                     <span className="min-w-0 flex-1 truncate text-foreground">{field.label}</span>
                     {field.required && (
@@ -99,7 +99,7 @@ export function ColumnPicker({
                   type="checkbox"
                   checked={shown.has(SCHEMA_VERSION_COLUMN)}
                   onChange={() => toggle(SCHEMA_VERSION_COLUMN)}
-                  className="h-3.5 w-3.5 rounded border-border"
+                  className="h-3.5 w-3.5 rounded border-input"
                 />
                 <span className="min-w-0 flex-1 truncate text-foreground">Schema version</span>
               </label>

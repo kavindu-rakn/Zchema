@@ -112,9 +112,12 @@
   --secondary: oklch(0.22 0.003 285);
   --secondary-foreground: oklch(0.90 0 0);
 
-  /* Muted: for subdued text and backgrounds */
+  /* Muted: for subdued text and backgrounds.
+     0.61 rather than 0.60 is not cosmetic: at 0.60 this text sits at
+     4.39:1 on --secondary (the chip background), just under the 4.5:1
+     WCAG 1.4.3 floor. It clears every surface at 0.61. */
   --muted: oklch(0.22 0.003 285);
-  --muted-foreground: oklch(0.60 0 0);
+  --muted-foreground: oklch(0.61 0 0);
 
   /* Accent: highlighted surfaces */
   --accent: oklch(0.22 0.003 285);
@@ -127,9 +130,21 @@
   --warning: oklch(0.80 0.15 80);
   --warning-foreground: oklch(0.16 0.002 285);
 
-  /* Borders: very subtle zinc dividers */
+  /* Borders: very subtle zinc dividers.
+
+     --border and --input are deliberately NOT the same value.
+
+     --border draws decorative separators — row dividers, card edges.
+     WCAG 1.4.11 explicitly exempts those, so it stays subtle.
+
+     --input draws the boundary of a CONTROL: text inputs, selects,
+     checkboxes, radios, outline buttons. That boundary is what tells
+     you a control is there, so 1.4.11 requires 3:1 against its
+     background. At 0.24 it measured 1.5:1 — invisible to anyone with
+     reduced contrast sensitivity. 0.49 clears 3:1 against both
+     --card and --background. */
   --border: oklch(0.28 0.003 285);
-  --input: oklch(0.24 0.003 285);
+  --input: oklch(0.49 0.003 285);
   --ring: oklch(0.72 0.17 162);
 
   /* Charts: green-to-neutral gradient */

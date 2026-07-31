@@ -16,7 +16,6 @@ import {
   ChevronRight,
   Info,
   Plus,
-  Upload,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -24,6 +23,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { ColumnPicker } from "@/components/data-center/column-picker";
 import { ColumnFilter } from "@/components/data-center/column-filter";
 import { ItemSheet } from "@/components/data-center/item-sheet";
+import { ImportEntry } from "@/components/import/import-entry";
 import { ExportButton } from "@/components/search/export-button";
 import { completenessOf, displayValueFor } from "@/lib/items";
 import {
@@ -54,6 +54,7 @@ export function ItemsTable({
   schemasByCategory = {},
   hasChildren = false,
   subtreeCategoryCount = 1,
+  subtreeItemCount = 0,
   health,
 }: {
   categoryId: string;
@@ -75,6 +76,8 @@ export function ItemsTable({
   schemasByCategory?: Record<string, EffectiveField[]>;
   hasChildren?: boolean;
   subtreeCategoryCount?: number;
+  /** Items across this category AND its descendants. */
+  subtreeItemCount?: number;
   health?: ItemHealthCounts;
 }) {
   const router = useRouter();
@@ -195,7 +198,7 @@ export function ItemsTable({
     <div className="space-y-3">
       {/* Health strip — each segment is a one-click filter */}
       {health && (
-        <div className="flex flex-wrap items-center gap-1 text-xs">
+        <div aria-live="polite" className="flex flex-wrap items-center gap-1 text-xs">
           <button
             type="button"
             onClick={() => setParams({ health: null, page: null })}
@@ -375,29 +378,53 @@ export function ItemsTable({
             </>
           ) : (
             <>
-              <p className="text-sm text-foreground">No items in {categoryName} yet.</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Items hold the actual data — this category&apos;s schema describes their shape.
-              </p>
-              <div className="mt-3 flex justify-center gap-2">
-                {canEdit && (
-                  <Button size="sm" onClick={() => setCreating(true)}>
-                    <Plus className="mr-1.5 h-3.5 w-3.5" />
-                    Add the first item
+              {/* A parent whose items all live on its children reads as
+                  broken when it says "no items". It is not empty — you
+                  are looking at the wrong level, and the fix is one
+                  click away. */}
+              {hasChildren && !includeSubtree && subtreeItemCount > 0 ? (
+                <>
+                  <p className="text-sm text-foreground">
+                    Items live on {categoryName}&apos;s subcategories.
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    There {subtreeItemCount === 1 ? "is" : "are"} {subtreeItemCount} item
+                    {subtreeItemCount === 1 ? "" : "s"} across{" "}
+                    {subtreeCategoryCount - 1} subcategor
+                    {subtreeCategoryCount - 1 === 1 ? "y" : "ies"}.
+                  </p>
+                  <Button
+                    size="sm"
+                    className="mt-3"
+                    onClick={() => setParams({ scope: "subtree", page: null })}
+                  >
+                    Show all {subtreeItemCount}
                   </Button>
-                )}
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button size="sm" variant="outline" disabled>
-                        <Upload className="mr-1.5 h-3.5 w-3.5" />
-                        Import from CSV
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-foreground">No items in {categoryName} yet.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Items hold the actual data — this category&apos;s schema describes their
+                    shape.
+                  </p>
+                  <div className="mt-3 flex flex-wrap justify-center gap-2">
+                    {canEdit && (
+                      <Button size="sm" onClick={() => setCreating(true)}>
+                        <Plus className="mr-1.5 h-3.5 w-3.5" />
+                        Add the first item
                       </Button>
-                    }
-                  />
-                  <TooltipContent>Coming in Phase 7</TooltipContent>
-                </Tooltip>
-              </div>
+                    )}
+                    {canManageSchema && (
+                      <ImportEntry
+                        tree={tree}
+                        categoryId={categoryId}
+                        label="Import from a file"
+                      />
+                    )}
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>
@@ -415,7 +442,7 @@ export function ItemsTable({
                       onChange={() =>
                         setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.id)))
                       }
-                      className="h-3.5 w-3.5 rounded border-border"
+                      className="h-3.5 w-3.5 rounded border-input"
                     />
                   </th>
                 )}
@@ -521,7 +548,7 @@ export function ItemsTable({
                           checked={selected.has(row.id)}
                           onClick={(event) => event.stopPropagation()}
                           onChange={() => toggleRow(row.id)}
-                          className="h-3.5 w-3.5 rounded border-border"
+                          className="h-3.5 w-3.5 rounded border-input"
                         />
                       </td>
                     )}

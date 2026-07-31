@@ -109,7 +109,7 @@ export function SearchBar({
           }}
           placeholder="Search everything —  brand:Sony  price:>500  missing:sku  in:electronics"
           aria-label="Search the catalog"
-          className="h-11 w-full rounded-lg border border-border bg-background pl-9 pr-9 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-11 w-full rounded-lg border border-input bg-background pl-9 pr-9 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
         {value && (
           <button

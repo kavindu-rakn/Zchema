@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Saira, Geist_Mono } from "next/font/google";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Motion } from "@/components/motion";
 import { Toaster } from "sonner";
 import "./globals.css";
 
@@ -40,7 +41,12 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: DENSITY_SCRIPT }} />
       </head>
       <body className="flex min-h-full flex-col bg-background font-sans text-foreground">
-        <TooltipProvider>{children}</TooltipProvider>
+        {/* framer-motion ignores prefers-reduced-motion unless told to.
+            Wrapping once here covers every animation in the app,
+            including the drag-to-reorder in the schema editor. */}
+        <Motion>
+          <TooltipProvider>{children}</TooltipProvider>
+        </Motion>
         <Toaster theme="dark" position="bottom-right" richColors />
       </body>
     </html>
