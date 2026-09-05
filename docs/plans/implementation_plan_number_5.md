@@ -23,7 +23,7 @@ engineering, but from the outside it still looks like CRUD with indentation.
 This phase changes the category the product competes in. The pitch becomes:
 
 > **Changing a data model against live records is the scariest routine operation in software.
-> SchemaShift shows you the blast radius before you pull the trigger, executes the change with
+> Zchema shows you the blast radius before you pull the trigger, executes the change with
 > a chosen remediation, and keeps a versioned record you can diff and roll back.**
 
 That is a schema-migration tool with a catalog attached, not a catalog with a schema editor.

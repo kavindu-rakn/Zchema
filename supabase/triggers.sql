@@ -1,5 +1,5 @@
 -- ============================================================
--- SchemaShift — Integrity Triggers (Phase 1, Increment 3)
+-- Zchema — Integrity Triggers (Phase 1, Increment 3)
 -- Source this AFTER functions.sql (it calls get_category_ancestors
 -- and get_category_subtree).
 --

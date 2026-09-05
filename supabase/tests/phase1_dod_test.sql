@@ -1,5 +1,5 @@
 -- ============================================================
--- SchemaShift — Phase 1 Definition-of-Done verification
+-- Zchema — Phase 1 Definition-of-Done verification
 -- ------------------------------------------------------------
 -- Run AFTER seedAmazon.sql. Checks the Phase 1 acceptance list
 -- end-to-end against real seeded data, including the cycle guard

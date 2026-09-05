@@ -103,7 +103,7 @@ export function DynamicForm({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [orphansOpen, setOrphansOpen] = useState(false);
 
-  const draftKey = categoryId ? `schemashift:draft:${categoryId}:${itemId ?? "new"}` : null;
+  const draftKey = categoryId ? `zchema:draft:${categoryId}:${itemId ?? "new"}` : null;
   const baselineRef = useRef<string>(JSON.stringify(initialData ?? {}));
 
   // Reset when the form is reused for a different item. The previous

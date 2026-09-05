@@ -1,5 +1,5 @@
 -- ============================================================
--- SchemaShift — Amazon-style seed (multi-level inheritance demo)
+-- Zchema — Amazon-style seed (multi-level inheritance demo)
 -- Expanded Version: ~750 lines, >250 items, deep categories, more blueprints
 -- ============================================================
 

@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 
 type Density = "comfortable" | "compact";
 
-const STORAGE_KEY = "schemashift:density";
+const STORAGE_KEY = "zchema:density";
 
 const OPTIONS: { value: Density; label: string; hint: string }[] = [
   { value: "comfortable", label: "Comfortable", hint: "Roomier spacing" },

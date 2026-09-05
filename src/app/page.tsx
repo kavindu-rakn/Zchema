@@ -12,11 +12,10 @@ export default function Home() {
           Dynamic Catalog Engine
         </div>
 
-        <Image src="/logo-nobg.png" alt="SchemaShift Logo" width={80} height={80} className="rounded-2xl shadow-xl border border-border/20 mt-2 mb-2" priority />
+        <Image src="/logo-nobg.png" alt="Zchema Logo" width={80} height={80} className="rounded-2xl shadow-xl border border-border/20 mt-2 mb-2" priority />
 
         <h1 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
-          Schema
-          <span className="text-primary">Shift</span>
+          <span className="text-primary">Z</span>chema
         </h1>
 
         <p className="max-w-lg text-base text-muted-foreground leading-relaxed">

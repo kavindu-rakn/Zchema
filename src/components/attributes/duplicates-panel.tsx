@@ -20,7 +20,7 @@ import { promoteFieldToAttribute } from "@/app/(dashboard)/data-center/attribute
 import { cn } from "@/lib/utils";
 import type { DuplicateFieldDefinition } from "@/lib/types";
 
-const DISMISSED_KEY = "schemashift:dismissed-promotions";
+const DISMISSED_KEY = "zchema:dismissed-promotions";
 
 export function DuplicatesPanel({ duplicates }: { duplicates: DuplicateFieldDefinition[] }) {
   const router = useRouter();

@@ -1,5 +1,5 @@
 -- ============================================================
--- SchemaShift — Attribute Registry (Phase 6, Increment 1)
+-- Zchema — Attribute Registry (Phase 6, Increment 1)
 -- Source AFTER schema.sql → functions.sql → triggers.sql → impact.sql.
 --
 -- WHY THIS EXISTS

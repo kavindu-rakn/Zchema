@@ -1,5 +1,5 @@
 -- ============================================================
--- SchemaShift — Database Schema (Phase 1: schema composition)
+-- Zchema — Database Schema (Phase 1: schema composition)
 -- Run this in the Supabase SQL Editor (or via supabase db push).
 --
 -- MODEL: schema lives on the CATEGORY node and is composed down
@@ -225,8 +225,8 @@ BEGIN
     NEW.id,
     NEW.email,
     CASE
-      WHEN NEW.email = 'admin@schemashift.lk'       THEN 'SCHEMA_ADMIN'
-      WHEN NEW.email = 'editor@schemashift.lk' THEN 'DATA_EDITOR'
+      WHEN NEW.email = 'admin@zchema.com'  THEN 'SCHEMA_ADMIN'
+      WHEN NEW.email = 'editor@zchema.com' THEN 'DATA_EDITOR'
       ELSE 'VIEWER'
     END
   );

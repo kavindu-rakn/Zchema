@@ -1,5 +1,5 @@
 -- ============================================================
--- SchemaShift — Query timings (Phase 7, Increment 5)
+-- Zchema — Query timings (Phase 7, Increment 5)
 --
 -- Run AFTER seedStress.sql. Times the five hottest queries and returns
 -- one row each with the real duration and the plan, so the numbers can

@@ -73,7 +73,7 @@ export function TopBar({
             ◈
           </span>
           <span className="font-heading text-sm font-semibold tracking-tight text-foreground">
-            SchemaShift
+            Zchema
           </span>
           <span className="hidden rounded border border-border px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground sm:inline">
             Dynamic Catelog Engine

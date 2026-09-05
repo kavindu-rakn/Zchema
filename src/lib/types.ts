@@ -1,4 +1,4 @@
-// ── TypeScript types for SchemaShift ─────────────────────────
+// ── TypeScript types for Zchema ──────────────────────────────
 // Canonical shapes for the category-owned schema model (Phase 1).
 // Every later phase depends on these exact names — do not rename them.
 

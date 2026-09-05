@@ -1,5 +1,5 @@
 -- ============================================================
--- SchemaShift — cross-category search (Phase 6, Increment 3)
+-- Zchema — cross-category search (Phase 6, Increment 3)
 --
 -- Run AFTER search.sql is applied.
 --

@@ -1,5 +1,5 @@
 -- ============================================================
--- SchemaShift — Row Level Security (Phase 1, Increment 4)
+-- Zchema — Row Level Security (Phase 1, Increment 4)
 -- Source this AFTER schema.sql (tables) — it is independent of
 -- functions.sql / triggers.sql but conventionally loads last.
 --
@@ -75,7 +75,7 @@ REVOKE ALL ON public.profiles, public.blueprints, public.categories,
               public.attributes, public.items, public.schema_versions
   FROM anon, authenticated;
 
--- SchemaShift requires a login: the anonymous role gets nothing back.
+-- Zchema requires a login: the anonymous role gets nothing back.
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.profiles   TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.blueprints TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.categories TO authenticated;

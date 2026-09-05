@@ -1,5 +1,5 @@
 -- ============================================================
--- SchemaShift — RLS policy tests (Phase 1, Increment 4)
+-- Zchema — RLS policy tests (Phase 1, Increment 4)
 -- ------------------------------------------------------------
 -- Built for the Supabase SQL editor: returns a PASS/FAIL/SKIP
 -- table as its FINAL statement.
@@ -13,7 +13,7 @@
 --                 SKIP (with the reason) instead of a false PASS.
 --
 -- NON-DESTRUCTIVE: fixture ids are fixed and cleaned before + after;
--- test users use @schemashift.test emails.
+-- test users use @zchema.test emails.
 --
 -- Run AFTER schema.sql + functions.sql + triggers.sql + policies.sql.
 -- Expected: 16 rows, all PASS.
@@ -177,13 +177,13 @@ BEGIN
                             raw_app_meta_data, raw_user_meta_data, is_super_admin)
     VALUES
       ('00000000-0000-0000-0000-000000000000', admin_id,  'authenticated','authenticated',
-       'rlstest-admin@schemashift.test','', now(), now(), now(),
+       'rlstest-admin@zchema.test','', now(), now(), now(),
        '{"provider":"email","providers":["email"]}','{}', false),
       ('00000000-0000-0000-0000-000000000000', editor_id, 'authenticated','authenticated',
-       'rlstest-editor@schemashift.test','', now(), now(), now(),
+       'rlstest-editor@zchema.test','', now(), now(), now(),
        '{"provider":"email","providers":["email"]}','{}', false),
       ('00000000-0000-0000-0000-000000000000', viewer_id, 'authenticated','authenticated',
-       'rlstest-viewer@schemashift.test','', now(), now(), now(),
+       'rlstest-viewer@zchema.test','', now(), now(), now(),
        '{"provider":"email","providers":["email"]}','{}', false);
 
     -- handle_new_user() created the profiles; set the roles under test
@@ -269,7 +269,7 @@ END $$;
 
 -- Safety-net cleanup (in case the block above returned early)
 DELETE FROM public.categories WHERE name LIKE 'ZZ %';
-DELETE FROM auth.users WHERE email LIKE 'rlstest-%@schemashift.test';
+DELETE FROM auth.users WHERE email LIKE 'rlstest-%@zchema.test';
 
 -- ── FINAL RESULT (what the editor displays) ─────────────────
 SELECT n, status AS result, assertion, detail

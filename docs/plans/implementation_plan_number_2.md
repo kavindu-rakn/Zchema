@@ -57,7 +57,7 @@ rather than the user's *task*.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  ◈ SchemaShift        ⌘K Search        [SCHEMA_ADMIN]  (kv)▾ │  ← top bar, 56px
+│  ◈ Zchema             ⌘K Search        [SCHEMA_ADMIN]  (kv)▾ │  ← top bar, 56px
 ├───────────────────┬──────────────────────────────────────────┤
 │ ⌕ filter tree     │  Electronics › Laptops › Gaming Laptops  │
 │                   │  ┌────────────────────────────────────┐  │
@@ -80,7 +80,7 @@ rather than the user's *task*.
 ### Increment 1 — Top bar shell, sidebar removal
 
 1. New `src/components/shell/top-bar.tsx`:
-   - Left: wordmark `SchemaShift`, subtle `SLT` mark. Links to `/dashboard`.
+   - Left: wordmark `Zchema`, subtle `SLT` mark. Links to `/dashboard`.
    - Centre: search trigger button (`Search…  ⌘K`) — wire it to the **existing**
      `src/components/command-palette.tsx`; do not build a second palette.
    - Right: role badge, then avatar dropdown → `Settings`, `Switch role` (dev only, move the

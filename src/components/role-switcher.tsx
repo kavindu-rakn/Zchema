@@ -30,7 +30,7 @@ const ROLES: UserRole[] = ["SCHEMA_ADMIN", "DATA_EDITOR", "VIEWER"];
  * uses this to decide whether to show the menu entry at all.
  */
 export function canSwitchRole(email?: string | null): boolean {
-  return process.env.NODE_ENV === "development" && email === "admin@schemashift.lk";
+  return process.env.NODE_ENV === "development" && email === "admin@zchema.com";
 }
 
 export function RoleSwitcher({

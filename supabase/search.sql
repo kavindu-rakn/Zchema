@@ -1,5 +1,5 @@
 -- ============================================================
--- SchemaShift — Cross-category item search (Phase 6, Increment 3)
+-- Zchema — Cross-category item search (Phase 6, Increment 3)
 -- Source AFTER schema.sql → functions.sql → triggers.sql → impact.sql
 --                        → attributes.sql.
 --

@@ -1,5 +1,5 @@
 -- ============================================================
--- SchemaShift — reparent & delete through impact analysis
+-- Zchema — reparent & delete through impact analysis
 -- (Phase 5, Increment 5)
 --
 -- Run AFTER impact.sql is applied. Builds its own sandbox tree and

@@ -17,14 +17,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SchemaShift",
+  title: "Zchema",
   description:
     "A schema management system for catalog data. Define fields on a category, inherit them down the tree, and change your data model against live records.",
 };
 
 // Applied before first paint so a saved density does not flash from
 // comfortable to compact on every page load.
-const DENSITY_SCRIPT = `try{var d=localStorage.getItem('schemashift:density');if(d)document.documentElement.setAttribute('data-density',d);}catch(e){}`;
+const DENSITY_SCRIPT = `try{var d=localStorage.getItem('zchema:density');if(d)document.documentElement.setAttribute('data-density',d);}catch(e){}`;
 
 export default function RootLayout({
   children,

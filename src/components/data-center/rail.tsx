@@ -19,8 +19,8 @@ import type { CategoryNode } from "@/lib/types";
 const MIN_WIDTH = 220;
 const MAX_WIDTH = 480;
 const DEFAULT_WIDTH = 288;
-const WIDTH_KEY = "schemashift:rail-width";
-const EXPANDED_KEY = "schemashift:tree-expanded";
+const WIDTH_KEY = "zchema:rail-width";
+const EXPANDED_KEY = "zchema:tree-expanded";
 
 /** Node id from `/data-center/<id>`, ignoring non-category children. */
 export function activeIdFromPath(pathname: string): string | null {
