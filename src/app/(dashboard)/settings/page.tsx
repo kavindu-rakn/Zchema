@@ -92,7 +92,7 @@ export default async function SettingsPage() {
         <CardHeader>
           <CardTitle className="text-base text-foreground">Appearance</CardTitle>
           <CardDescription className="text-muted-foreground">
-            SchemaShift is a data tool — compact fits more of your catalogue on screen.
+            Zchema is a data tool — compact fits more of your catalogue on screen.
           </CardDescription>
         </CardHeader>
         <CardContent>

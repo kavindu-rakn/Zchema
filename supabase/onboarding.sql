@@ -1,5 +1,5 @@
 -- ============================================================
--- SchemaShift — Onboarding (Phase 7, Increment 3)
+-- Zchema — Onboarding (Phase 7, Increment 3)
 -- Source AFTER schema.sql → functions.sql → triggers.sql → impact.sql
 --                        → attributes.sql → search.sql → import.sql.
 -- ============================================================

@@ -1,5 +1,5 @@
 -- ============================================================
--- SchemaShift — Amazon-style seed (multi-level inheritance demo)
+-- Zchema — Amazon-style seed (multi-level inheritance demo)
 -- Run AFTER schema.sql → functions.sql → triggers.sql → policies.sql
 --
 -- ⚠️  DESTRUCTIVE: the TRUNCATE below deletes ALL blueprints,

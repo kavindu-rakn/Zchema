@@ -104,7 +104,7 @@ export function ItemsTable({
 
   const allSelected = rows.length > 0 && rows.every((row) => selected.has(row.id));
 
-  const storageKey = `schemashift:columns:${categoryId}`;
+  const storageKey = `zchema:columns:${categoryId}`;
 
   // Per-category column choice, restored after mount so SSR agrees.
   useEffect(() => {

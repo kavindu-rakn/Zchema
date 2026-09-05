@@ -272,7 +272,7 @@ CREATE INDEX idx_schema_versions_category ON public.schema_versions (category_id
 
 Keep `updated_at` triggers for all tables including the two new ones. Keep
 `handle_new_user()` but map the seed emails to the **new** role names, and add
-`admin@schemashift.lk` → `SCHEMA_ADMIN`, `contributor@schemashift.lk` → `DATA_EDITOR`.
+`admin@zchema.com` → `SCHEMA_ADMIN`, `contributor@zchema.com` → `DATA_EDITOR`.
 Keep `protect_role_update()` with the new admin role name.
 
 **Cycle guard** — a category must not become its own ancestor:

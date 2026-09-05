@@ -1,5 +1,5 @@
 -- ============================================================
--- SchemaShift — Stress dataset (Phase 7, Increment 5)
+-- Zchema — Stress dataset (Phase 7, Increment 5)
 --
 -- 50 categories, 6 levels deep, 5,000 items. The point is not volume
 -- for its own sake — it is DEPTH and BREADTH together, because the

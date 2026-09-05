@@ -1,5 +1,5 @@
 -- ============================================================
--- SchemaShift — Schema Change Impact Analysis (Phase 5)
+-- Zchema — Schema Change Impact Analysis (Phase 5)
 -- Source AFTER schema.sql → functions.sql → triggers.sql.
 --
 -- Changing a data model against live records is the scariest routine

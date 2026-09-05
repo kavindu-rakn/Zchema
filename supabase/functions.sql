@@ -1,5 +1,5 @@
 -- ============================================================
--- SchemaShift — Schema Resolver Functions (Phase 1, Increment 2)
+-- Zchema — Schema Resolver Functions (Phase 1, Increment 2)
 -- Source this AFTER schema.sql.
 --
 -- These functions are the CONTRACT every later phase reads from.

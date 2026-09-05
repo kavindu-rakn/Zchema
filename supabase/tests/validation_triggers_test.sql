@@ -1,5 +1,5 @@
 -- ============================================================
--- SchemaShift — Integrity trigger tests (Phase 1, Increment 3)
+-- Zchema — Integrity trigger tests (Phase 1, Increment 3)
 -- ------------------------------------------------------------
 -- Built for the Supabase SQL editor: returns a PASS/FAIL table as
 -- its FINAL statement. NON-DESTRUCTIVE & IDEMPOTENT (fixed test

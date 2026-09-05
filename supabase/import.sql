@@ -1,5 +1,5 @@
 -- ============================================================
--- SchemaShift — Import (Phase 7, Increment 2)
+-- Zchema — Import (Phase 7, Increment 2)
 -- Source AFTER schema.sql → functions.sql → triggers.sql → impact.sql
 --                        → attributes.sql → search.sql.
 --

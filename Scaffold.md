@@ -1,5 +1,5 @@
 ```text
-Act as a Principal Full-Stack Engineer and Software Architect. We are building a high-performance, metadata-driven Dynamic Catalog Engine named "SchemaShift" (or "OmniCatalog").
+Act as a Principal Full-Stack Engineer and Software Architect. We are building a high-performance, metadata-driven Dynamic Catalog Engine named "Zchema" (or "OmniCatalog").
 
 The design and UI/UX must mirror the dark-mode, minimalist, developer-first aesthetic of platforms like Supabase and Resend (using a zinc/slate dark palette, subtle borders, crisp micro-interactions, clean typography, and a Command Palette via `cmdk`).
 

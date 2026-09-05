@@ -1,5 +1,5 @@
 -- ============================================================
--- SchemaShift — impact analysis severity suite (Phase 5, Inc 6)
+-- Zchema — impact analysis severity suite (Phase 5, Inc 6)
 --
 -- Impact analysis that is WRONG is worse than none: it manufactures
 -- confidence immediately before a destructive act. So every row of the

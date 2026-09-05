@@ -1,5 +1,5 @@
 -- ============================================================
--- SchemaShift — analyze_schema_change smoke test (Phase 5, Inc 1)
+-- Zchema — analyze_schema_change smoke test (Phase 5, Inc 1)
 -- ------------------------------------------------------------
 -- Run AFTER seedAmazon.sql, and after impact.sql is applied.
 --

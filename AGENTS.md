@@ -6,7 +6,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ---
 
-# SchemaShift — the data model, and the mistakes to avoid
+# Zchema — the data model, and the mistakes to avoid
 
 ## Schema lives on the category, not in a template
 

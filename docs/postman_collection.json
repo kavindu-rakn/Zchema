@@ -1,8 +1,8 @@
 {
   "info": {
     "_postman_id": "b3e5a59f-d5b4-4b53-9f5a-c63e2c384e55",
-    "name": "SchemaShift API",
-    "description": "SchemaShift has no bespoke REST layer. Mutations from the UI go through Next.js Server Actions, which are not addressable as a stable API. What IS addressable, and what this collection covers:\n\n  1. The Supabase PostgREST surface. Every SQL function in supabase/*.sql is callable at /rest/v1/rpc/<name>, subject to exactly the same RLS as the app.\n  2. /api/export, the one HTTP route the app itself defines.\n\nSet supabaseUrl, anonKey and accessToken (a signed-in user's JWT) before running anything. Role matters: writes need SCHEMA_ADMIN or DATA_EDITOR, and RLS will return zero rows rather than erroring when the role is wrong.",
+    "name": "Zchema API",
+    "description": "Zchema has no bespoke REST layer. Mutations from the UI go through Next.js Server Actions, which are not addressable as a stable API. What IS addressable, and what this collection covers:\n\n  1. The Supabase PostgREST surface. Every SQL function in supabase/*.sql is callable at /rest/v1/rpc/<name>, subject to exactly the same RLS as the app.\n  2. /api/export, the one HTTP route the app itself defines.\n\nSet supabaseUrl, anonKey and accessToken (a signed-in user's JWT) before running anything. Role matters: writes need SCHEMA_ADMIN or DATA_EDITOR, and RLS will return zero rows rather than erroring when the role is wrong.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [

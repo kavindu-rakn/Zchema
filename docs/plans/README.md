@@ -1,4 +1,4 @@
-# SchemaShift — Overhaul Plans
+# Zchema — Overhaul Plans
 
 Seven sequential phases. Each file is a self-contained brief for Claude Code.
 
@@ -14,7 +14,7 @@ Seven sequential phases. Each file is a self-contained brief for Claude Code.
 
 ## The one-line pitch this overhaul is buying
 
-> SchemaShift is not a catalog. It is a **schema management system for catalog data** — change your data model against live records and see exactly what breaks *before* it breaks.
+> Zchema is not a catalog. It is a **schema management system for catalog data** — change your data model against live records and see exactly what breaks *before* it breaks.
 
 ## What is being fixed
 

@@ -1,8 +1,8 @@
-# SchemaShift
+# Zchema
 
 **Change your data model against live records — and see exactly what breaks before it breaks.**
 
-Most catalog tools let you edit a schema and find out afterwards. SchemaShift shows you the
+Most catalog tools let you edit a schema and find out afterwards. Zchema shows you the
 blast radius first: which categories, how many items, which values will not survive, and what
 should happen to each one. Then it applies the change in a single transaction and keeps a
 versioned record you can diff and roll back.
@@ -21,7 +21,7 @@ Template-based tools get this wrong in a specific way: a category gets *one* tem
 ability to add anything of its own, so `Laptops` and `Smartphones` are forced to share a schema
 neither of them wants. Adding `gpu` for laptops pollutes every phone.
 
-SchemaShift puts the schema **on the category node** and composes it down the tree:
+Zchema puts the schema **on the category node** and composes it down the tree:
 
 ```
 blueprints (optional presets)        attributes (shared field registry)

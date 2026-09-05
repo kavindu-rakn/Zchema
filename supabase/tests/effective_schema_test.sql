@@ -1,5 +1,5 @@
 -- ============================================================
--- SchemaShift — Effective Schema resolver tests (Phase 1, Increment 2)
+-- Zchema — Effective Schema resolver tests (Phase 1, Increment 2)
 -- ------------------------------------------------------------
 -- Built for the Supabase SQL editor: it returns a PASS/FAIL table
 -- as its FINAL statement (the editor only displays the last result).

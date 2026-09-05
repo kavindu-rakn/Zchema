@@ -1,5 +1,5 @@
 -- ============================================================
--- SchemaShift — Vehicle fleet seed (second, non-commerce domain)
+-- Zchema — Vehicle fleet seed (second, non-commerce domain)
 -- Run AFTER schema.sql → functions.sql → triggers.sql → policies.sql
 --
 -- ⚠️  DESTRUCTIVE: the TRUNCATE below deletes ALL blueprints,

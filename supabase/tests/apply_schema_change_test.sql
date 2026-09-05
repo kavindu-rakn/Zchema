@@ -1,5 +1,5 @@
 -- ============================================================
--- SchemaShift — apply_schema_change / rollback round-trip test
+-- Zchema — apply_schema_change / rollback round-trip test
 -- (Phase 5, Increment 2)
 --
 -- Run AFTER impact.sql is applied. Order does not matter relative to

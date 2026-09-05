@@ -1,5 +1,5 @@
 -- ============================================================
--- SchemaShift — Attribute registry (Phase 6, Increment 1)
+-- Zchema — Attribute registry (Phase 6, Increment 1)
 --
 -- Run AFTER attributes.sql is applied. Assertions 1-13 use a sandbox
 -- tree for exact counts and tear it down; assertion 14 checks the real

@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Bookmark, BookmarkCheck, X } from "lucide-react";
 
-const KEY = "schemashift:saved-searches";
+const KEY = "zchema:saved-searches";
 const LIMIT = 12;
 
 interface Saved {

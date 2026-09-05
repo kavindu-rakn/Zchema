@@ -66,7 +66,7 @@ export function FirstRun({ canEdit }: { canEdit: boolean }) {
           Nothing here yet
         </h1>
         <p className="mx-auto mt-2 max-w-lg text-sm text-muted-foreground">
-          SchemaShift models a catalog as a tree of categories, each adding fields to what it
+          Zchema models a catalog as a tree of categories, each adding fields to what it
           inherits. Three ways to start:
         </p>
       </div>
