@@ -35,16 +35,32 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // If user is not signed in and the current path is not /login or /signup
-  // or the root page, redirect to /login.
+  // If user is not signed in and the current path is not public,
+  // redirect to /login.
+  //
+  // /auth/callback MUST be public. It is the PKCE code-exchange landing
+  // page, so by definition there is no session yet when it is hit —
+  // omitting it bounced every confirmation link to /login before
+  // exchangeCodeForSession() could run, which silently broke email
+  // verification and any future OAuth or magic-link flow.
   const path = request.nextUrl.pathname;
   const isPublicRoute =
-    path === "/" || path === "/login" || path === "/signup";
+    path === "/" ||
+    path === "/login" ||
+    path === "/signup" ||
+    path === "/auth/callback";
 
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    return NextResponse.redirect(url);
+    const redirect = NextResponse.redirect(url);
+    // Carry over any cookies the getUser() refresh above set. Returning
+    // a bare redirect discards them, which logs the user out spuriously
+    // the next time a token rotates.
+    for (const cookie of supabaseResponse.cookies.getAll()) {
+      redirect.cookies.set(cookie);
+    }
+    return redirect;
   }
 
   return supabaseResponse;

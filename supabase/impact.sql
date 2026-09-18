@@ -912,10 +912,14 @@ $$;
 -- that filters rows produces a silent no-op UPDATE, not an error. Fail
 -- loudly instead.
 --
--- A NULL auth.uid() means there is no JWT: the SQL editor, a migration,
--- or the service role. Those already bypass RLS by being the table
--- owner, so gating them here would only break the test suite without
--- adding protection.
+-- A NULL auth.uid() means there is no JWT. That is legitimate from the
+-- SQL editor, a migration or the service role — they are the table owner,
+-- already bypass RLS, and the suites in supabase/tests/ depend on it.
+-- It is NOT legitimate from PostgREST: Postgres grants EXECUTE on new
+-- functions to PUBLIC by default, so an unauthenticated caller really can
+-- reach this function, and "no JWT" must not read as "trusted" there.
+-- Distinguish the two by the connection role rather than trusting the
+-- table-grant layer to be the only thing standing in the way.
 CREATE OR REPLACE FUNCTION public.require_schema_admin()
 RETURNS VOID
 LANGUAGE plpgsql
@@ -924,8 +928,14 @@ SECURITY INVOKER
 SET search_path = ''
 AS $$
 BEGIN
-  IF auth.uid() IS NOT NULL
-     AND public.get_user_role() IS DISTINCT FROM 'SCHEMA_ADMIN' THEN
+  IF auth.uid() IS NULL THEN
+    IF current_user IN ('anon', 'authenticated') THEN
+      RAISE EXCEPTION 'Only a SCHEMA_ADMIN may change the schema.';
+    END IF;
+    RETURN;  -- owner / service_role / SQL editor
+  END IF;
+
+  IF public.get_user_role() IS DISTINCT FROM 'SCHEMA_ADMIN' THEN
     RAISE EXCEPTION 'Only a SCHEMA_ADMIN may change the schema.';
   END IF;
 END;

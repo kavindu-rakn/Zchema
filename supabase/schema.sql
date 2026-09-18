@@ -187,6 +187,10 @@ CREATE INDEX idx_schema_versions_category
 
 -- ============================================================
 -- 8. updated_at triggers
+-- ------------------------------------------------------------
+-- search_path is pinned here as on every other function in the project.
+-- now() still resolves: pg_catalog is always searched, even when the
+-- path is empty.
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.update_modified_column()
 RETURNS TRIGGER AS $$
@@ -194,7 +198,7 @@ BEGIN
   NEW.updated_at = now();
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = '';
 
 DROP TRIGGER IF EXISTS update_profiles_modtime        ON public.profiles;
 DROP TRIGGER IF EXISTS update_blueprints_modtime      ON public.blueprints;
@@ -212,6 +216,21 @@ CREATE TRIGGER update_attributes_modtime BEFORE UPDATE ON public.attributes FOR 
 
 -- ============================================================
 -- 9. Auto-create profile on signup
+-- ------------------------------------------------------------
+-- The FIRST account on a fresh instance becomes SCHEMA_ADMIN, so a new
+-- deployment is usable without hand-editing the database. Every account
+-- after it starts as VIEWER and is promoted from Settings.
+--
+-- This replaces a hardcoded `admin@zchema.com` / `editor@zchema.com`
+-- email match, which granted SCHEMA_ADMIN to whoever registered an
+-- address nobody owns — and re-opened that window on every rebuild.
+--
+-- "First" is judged against auth.users, NEVER against profiles. The
+-- two can disagree: this file drops and recreates `profiles`, which
+-- empties it while every account survives in auth.users. Keyed on
+-- profiles, a re-run would make the next stranger to sign up the admin
+-- of an instance that already has users. (That happened on 2026-09-18
+-- — see the backfill in §9b below, which exists for the same reason.)
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER
@@ -219,16 +238,27 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
 AS $$
+DECLARE
+  is_first_user BOOLEAN;
 BEGIN
+  -- Serialise the bootstrap check. Without the lock two signups racing
+  -- on an empty instance could both observe "nobody else yet" and both
+  -- become admin. Transaction-scoped; released automatically. Under
+  -- READ COMMITTED the check below takes a fresh snapshot after the lock
+  -- is granted, so the loser of the race sees the winner's row.
+  PERFORM pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtext('zchema_bootstrap_admin')
+  );
+  -- AFTER INSERT: NEW is already in auth.users, so look for anyone else.
+  is_first_user := NOT EXISTS (
+    SELECT 1 FROM auth.users WHERE id <> NEW.id
+  );
+
   INSERT INTO public.profiles (id, email, role)
   VALUES (
     NEW.id,
     NEW.email,
-    CASE
-      WHEN NEW.email = 'admin@zchema.com'  THEN 'SCHEMA_ADMIN'
-      WHEN NEW.email = 'editor@zchema.com' THEN 'DATA_EDITOR'
-      ELSE 'VIEWER'
-    END
+    CASE WHEN is_first_user THEN 'SCHEMA_ADMIN' ELSE 'VIEWER' END
   );
   RETURN NEW;
 END;
@@ -241,21 +271,109 @@ CREATE TRIGGER on_auth_user_created
 
 
 -- ============================================================
--- 10. Role update protection
+-- 9b. Backfill profiles for accounts that already exist
 -- ------------------------------------------------------------
--- Only a SCHEMA_ADMIN may change any profile's role.
+-- handle_new_user() only fires when an auth.users row is INSERTED, but
+-- §0 drops and recreates `profiles`. Re-running this file against a
+-- project that already has accounts therefore leaves every one of them
+-- with no profile: no role, and every requireProfile() call failing.
+--
+-- Recreate the missing rows by the bootstrap rule — if no SCHEMA_ADMIN
+-- exists, the oldest account becomes one; everyone else is VIEWER.
+-- Earlier role assignments cannot be recovered (they lived in the table
+-- that was just dropped), so re-promote from Settings → Users.
+-- A no-op on a fresh project, and on any project whose profiles are
+-- intact.
+-- ============================================================
+INSERT INTO public.profiles (id, email, role)
+SELECT
+  u.id,
+  u.email,
+  CASE
+    WHEN NOT EXISTS (SELECT 1 FROM public.profiles WHERE role = 'SCHEMA_ADMIN')
+     AND u.id = (SELECT id FROM auth.users ORDER BY created_at, id LIMIT 1)
+    THEN 'SCHEMA_ADMIN'
+    ELSE 'VIEWER'
+  END
+FROM auth.users u
+WHERE NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = u.id);
+
+
+-- ============================================================
+-- 10. Role protection — UPDATE *and* INSERT
+-- ------------------------------------------------------------
+-- Only a SCHEMA_ADMIN may set or change a profile's role.
+--
+-- Both paths are guarded, and the pairing is load-bearing. Guarding
+-- UPDATE alone left a full escalation open: a VIEWER could DELETE their
+-- own profile row and re-INSERT it with role 'SCHEMA_ADMIN', because no
+-- trigger fired on INSERT. Since requireSchemaAdmin() and every RLS
+-- policy read this table, that handed out the whole application.
+-- policies.sql §3 now also withholds INSERT/DELETE on profiles from
+-- `authenticated`, so this is the second of two layers, not the only one.
+--
+-- Note `IS DISTINCT FROM` rather than `<>` when reading the caller's
+-- role: if it comes back NULL (no auth.uid(), or a profile mid-deletion)
+-- then `<>` yields NULL, the IF is not taken, and the guard fails OPEN.
+--
+-- A NULL auth.uid() means there is no JWT, and that has two meanings.
+-- From the SQL editor, a migration or the service role it is the table
+-- owner — trusted, and the only way an operator can promote anyone by
+-- hand (seed.sql §4, the RLS test suite). From the API roles it is an
+-- unauthenticated caller — never trusted. Told apart by `current_user`,
+-- exactly as require_schema_admin() in impact.sql does.
+--
+-- That is why both functions are SECURITY INVOKER. Inside a DEFINER
+-- function `current_user` is always the owner, so the check above would
+-- be blind. Nothing here needs elevated rights: the caller's role comes
+-- from get_user_role(), which is itself DEFINER precisely so that it can
+-- read `profiles` past RLS.
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.protect_role_update()
 RETURNS TRIGGER
 LANGUAGE plpgsql
-SECURITY DEFINER
+SECURITY INVOKER
 SET search_path = ''
 AS $$
 BEGIN
   IF NEW.role IS DISTINCT FROM OLD.role THEN
-    IF (SELECT role FROM public.profiles WHERE id = auth.uid()) <> 'SCHEMA_ADMIN' THEN
+    IF auth.uid() IS NULL THEN
+      IF current_user IN ('anon', 'authenticated') THEN
+        RAISE EXCEPTION 'Only SCHEMA_ADMIN can change roles';
+      END IF;
+      RETURN NEW;  -- owner / service_role / SQL editor
+    END IF;
+
+    IF public.get_user_role() IS DISTINCT FROM 'SCHEMA_ADMIN' THEN
       RAISE EXCEPTION 'Only SCHEMA_ADMIN can change roles';
     END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.protect_role_insert()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    -- No JWT. The legitimate case is handle_new_user(): it is DEFINER, so
+    -- the insert it makes — and this trigger, fired inside it — run as
+    -- the owner, and the bootstrap SCHEMA_ADMIN row is allowed through.
+    -- anon and authenticated hold no INSERT grant on profiles, so they
+    -- should never reach here; refuse them anyway rather than rely on it.
+    IF current_user IN ('anon', 'authenticated') THEN
+      RAISE EXCEPTION 'Only SCHEMA_ADMIN can assign a role other than VIEWER';
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  IF NEW.role IS DISTINCT FROM 'VIEWER'
+     AND public.get_user_role() IS DISTINCT FROM 'SCHEMA_ADMIN' THEN
+    RAISE EXCEPTION 'Only SCHEMA_ADMIN can assign a role other than VIEWER';
   END IF;
   RETURN NEW;
 END;
@@ -265,6 +383,26 @@ DROP TRIGGER IF EXISTS ensure_role_protection ON public.profiles;
 CREATE TRIGGER ensure_role_protection
   BEFORE UPDATE ON public.profiles
   FOR EACH ROW EXECUTE FUNCTION public.protect_role_update();
+
+DROP TRIGGER IF EXISTS ensure_role_protection_insert ON public.profiles;
+CREATE TRIGGER ensure_role_protection_insert
+  BEFORE INSERT ON public.profiles
+  FOR EACH ROW EXECUTE FUNCTION public.protect_role_insert();
+
+-- Postgres grants EXECUTE on every new function to PUBLIC, so each of
+-- these trigger functions was exposed as /rest/v1/rpc/<name> to anon and
+-- authenticated — and handle_new_user() is SECURITY DEFINER, which the
+-- Supabase security advisor flags. Calling a trigger function outside a
+-- trigger fails, so none of this was exploitable, but there is no reason
+-- to offer any of it on the public API.
+-- Revoking EXECUTE does NOT stop the triggers from firing: the privilege
+-- is checked at CREATE TRIGGER time, not each time a trigger fires.
+-- (Verified against the live project on 2026-09-18 before relying on it:
+-- with EXECUTE revoked from `authenticated`, an insert by `authenticated`
+-- still fired the trigger. Getting this wrong would break every signup.)
+REVOKE EXECUTE ON FUNCTION public.handle_new_user()     FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.protect_role_update() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.protect_role_insert() FROM PUBLIC, anon, authenticated;
 
 
 -- ============================================================
@@ -276,6 +414,7 @@ CREATE TRIGGER ensure_role_protection
 CREATE OR REPLACE FUNCTION public.prevent_category_cycle()
 RETURNS TRIGGER
 LANGUAGE plpgsql
+SET search_path = ''
 AS $$
 DECLARE
   cur UUID := NEW.parent_id;

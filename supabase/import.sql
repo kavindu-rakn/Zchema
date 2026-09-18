@@ -23,9 +23,14 @@
 -- into an existing category with no new fields is a DATA operation, and
 -- gating it behind SCHEMA_ADMIN would be wrong.
 --
--- As with require_schema_admin, a NULL auth.uid() means there is no JWT
--- — the SQL editor or the service role — which already bypasses RLS as
--- table owner.
+-- As with require_schema_admin, a NULL auth.uid() means there is no JWT.
+-- Trusted from the SQL editor or the service role (table owner, bypasses
+-- RLS anyway); NOT trusted from PostgREST, where EXECUTE is granted to
+-- PUBLIC by default and an unauthenticated caller can reach this. The
+-- connection role tells the two apart.
+--
+-- NOT IN is also a NULL trap: if get_user_role() returns NULL the whole
+-- predicate is NULL and the guard fails open. IS DISTINCT FROM does not.
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.require_data_editor()
 RETURNS VOID
@@ -34,9 +39,19 @@ STABLE
 SECURITY INVOKER
 SET search_path = ''
 AS $$
+DECLARE
+  caller_role TEXT;
 BEGIN
-  IF auth.uid() IS NOT NULL
-     AND public.get_user_role() NOT IN ('SCHEMA_ADMIN', 'DATA_EDITOR') THEN
+  IF auth.uid() IS NULL THEN
+    IF current_user IN ('anon', 'authenticated') THEN
+      RAISE EXCEPTION 'You need the DATA_EDITOR or SCHEMA_ADMIN role to add items.';
+    END IF;
+    RETURN;  -- owner / service_role / SQL editor
+  END IF;
+
+  caller_role := public.get_user_role();
+  IF caller_role IS DISTINCT FROM 'SCHEMA_ADMIN'
+     AND caller_role IS DISTINCT FROM 'DATA_EDITOR' THEN
     RAISE EXCEPTION 'You need the DATA_EDITOR or SCHEMA_ADMIN role to add items.';
   END IF;
 END;
