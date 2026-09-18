@@ -13,6 +13,7 @@ import type { User } from "@supabase/supabase-js";
 import { LogOut, Settings, UserCog } from "lucide-react";
 
 import { createClient } from "@/utils/supabase/client";
+import { LogoMark } from "@/components/brand/logo-mark";
 import { CommandPalette } from "@/components/command-palette";
 import { RoleSwitcher, canSwitchRole } from "@/components/role-switcher";
 import { Badge } from "@/components/ui/badge";
@@ -69,14 +70,13 @@ export function TopBar({
           href="/dashboard"
           className="flex items-center gap-2 rounded-md px-1 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <span className="text-primary" aria-hidden>
-            ◈
-          </span>
+          <LogoMark className="h-5 w-5 text-primary" />
           <span className="font-heading text-sm font-semibold tracking-tight text-foreground">
             Zchema
           </span>
-          <span className="hidden rounded border border-border px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground sm:inline">
-            Dynamic Catelog Engine
+          {/* lg, not sm: the tagline is long, and below lg it crowds the search. */}
+          <span className="hidden rounded border border-border px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground lg:inline">
+            See what breaks before it breaks
           </span>
         </Link>
 

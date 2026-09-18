@@ -5,7 +5,7 @@
 // into a sheet. Deliberately not a mobile-optimised tree — a working
 // drawer is the goal.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { Menu, Search } from "lucide-react";
 
@@ -34,9 +34,12 @@ export function MobileTreeDrawer({
   const { expanded, toggle, expand } = useTreeExpansion(tree);
 
   // Picking a category navigates; the drawer should get out of the way.
-  useEffect(() => {
+  // Closed during render on a route change, not in an effect afterwards.
+  const [lastPath, setLastPath] = useState(pathname);
+  if (pathname !== lastPath) {
+    setLastPath(pathname);
     setOpen(false);
-  }, [pathname]);
+  }
 
   const activeId = activeIdFromPath(pathname);
 

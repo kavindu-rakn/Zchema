@@ -120,17 +120,23 @@ Then one seed:
 
 | seed | shape |
 |---|---|
-| `seedAmazonFull.sql` | 39 categories, 4 levels, several domains — the richest |
-| `seedAmazon.sql` | 8 categories, the minimal inheritance demo |
+| `seedAmazonFull.sql` | 32 categories, 265 items, 3 levels, several domains — the richest |
+| `seedAmazon.sql` | 13 categories, 3 levels — the minimal inheritance demo |
 | `seedVehicle.sql` | a structurally different second domain |
 | `seedStress.sql` | 50 categories, 5,000 items — **truncates**, for timings only |
 
 Roles: `SCHEMA_ADMIN` owns the data model, `DATA_EDITOR` owns item data only, `VIEWER` reads.
+The first account to sign up on a fresh instance becomes `SCHEMA_ADMIN`; everyone after it starts
+as `VIEWER` and is promoted from **Settings → Users**.
+
+`schema.sql` drops and recreates every table — never run it against data you want to keep.
+`functions.sql` through `onboarding.sql` are safe to re-run. Every seed file **replaces** the
+catalog.
 
 ### Tests
 
 ```bash
-npm test          # 234 unit tests: query DSL, inference, CSV, export, tree moves
+npm test          # 246 unit tests: query DSL, inference, CSV, export, tree moves, redirects
 npm run build     # typecheck + production build
 ```
 
@@ -185,8 +191,27 @@ walkthrough in [`docs/DEMO.md`](docs/DEMO.md).
 Next.js 16 (App Router) · React 19 · TypeScript · Supabase (Postgres + RLS) · Tailwind 4 ·
 Base UI. No test framework — Node 24 runs TypeScript directly and ships `node:test`.
 
+## Single-tenant by design
+
+One deployment serves one organisation, and its catalog lives in its own Postgres rather than a
+shared one. The teams who most need to see a schema change's blast radius before applying it are
+the ones with large, live datasets — and they are also the ones who want that data isolated. A
+second customer is a second Supabase project, not an `org_id` column.
+
+## Roadmap
+
+In order, each building on the last:
+
+1. **Approval workflow for schema changes** — `schema_versions` already stores the exact authored
+   payload a proposal needs, and `apply_schema_change` is already the transactional primitive.
+2. **Field validation rules** (regex, min/max, length, uniqueness) on the attribute registry — which
+   gives impact analysis a new question to answer: *"tightening this rule invalidates 47 values."*
+3. **Images and attachments**, including a storage lifecycle, so a removed field's files are kept
+   as reliably as its values.
+4. **Item-to-item relations**, as a real link table so references carry foreign keys — extending
+   impact analysis beyond a single subtree.
+
 ## Not built, deliberately
 
-Attribute-level validation rules (regex, min/max); computed fields; a public read-only catalog
-view; scheduled exports; multi-tenant workspaces; an approval workflow for schema changes —
-though `schema_versions` already has the shape to support one.
+Computed fields; a public read-only catalog view; scheduled exports; per-locale values and
+channel syndication; billing and multi-tenant workspaces (see above).

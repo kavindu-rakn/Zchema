@@ -5,12 +5,36 @@
 // surfaces from there. Persisted to localStorage and re-applied before
 // first paint by the inline script in the root layout.
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { cn } from "@/lib/utils";
 
 type Density = "comfortable" | "compact";
 
 const STORAGE_KEY = "zchema:density";
+
+// The source of truth is the data-density attribute on <html>, which the
+// root layout's inline script sets before first paint. Read it as an
+// external store: the server snapshot keeps hydration consistent, and a
+// MutationObserver re-renders whenever the attribute changes — including
+// from apply() below — so there is no local state to keep in step.
+function subscribe(onChange: () => void) {
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-density"],
+  });
+  return () => observer.disconnect();
+}
+
+function readDensity(): Density {
+  return document.documentElement.getAttribute("data-density") === "compact"
+    ? "compact"
+    : "comfortable";
+}
+
+function serverDensity(): Density {
+  return "comfortable";
+}
 
 const OPTIONS: { value: Density; label: string; hint: string }[] = [
   { value: "comfortable", label: "Comfortable", hint: "Roomier spacing" },
@@ -18,16 +42,9 @@ const OPTIONS: { value: Density; label: string; hint: string }[] = [
 ];
 
 export function DensityToggle() {
-  const [density, setDensity] = useState<Density>("comfortable");
-
-  // Read after mount so server and client markup agree.
-  useEffect(() => {
-    const stored = document.documentElement.getAttribute("data-density");
-    if (stored === "compact" || stored === "comfortable") setDensity(stored);
-  }, []);
+  const density = useSyncExternalStore(subscribe, readDensity, serverDensity);
 
   const apply = (next: Density) => {
-    setDensity(next);
     document.documentElement.setAttribute("data-density", next);
     try {
       window.localStorage.setItem(STORAGE_KEY, next);

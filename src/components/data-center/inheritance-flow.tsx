@@ -34,9 +34,12 @@ export function InheritanceFlow({
   if (chain.length === 0) return null;
 
   // Fields are attributed to whichever category defined them; overrides
-  // are attributed to the category that applied the patch.
+  // are attributed to the category that applied the patch. A plain loop
+  // rather than map(): the running total is mutated as it goes, and the
+  // React compiler rejects mutating an outer variable inside a callback.
+  const bands: Band[] = [];
   let running = 0;
-  const bands: Band[] = chain.map((node) => {
+  for (const node of chain) {
     const contributes = effective
       .filter((field) => field.source_category_id === node.id)
       .map((field) => field.key);
@@ -44,15 +47,15 @@ export function InheritanceFlow({
       .filter((field) => field.overridden_by?.includes(node.id))
       .map((field) => field.key);
     running += contributes.length;
-    return {
+    bands.push({
       id: node.id,
       name: node.name,
       depth: node.depth,
       contributes,
       overrides,
       runningTotal: running,
-    };
-  });
+    });
+  }
 
   const height = bands.length * BAND_HEIGHT + (bands.length - 1) * BAND_GAP + 8;
 

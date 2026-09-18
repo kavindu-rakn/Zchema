@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { use, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/utils/supabase/client'
@@ -10,10 +10,25 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { AlertCircle, Loader2 } from 'lucide-react'
 
-export default function LoginPage() {
+// /auth/callback lands here with ?error=auth_callback_failed when an
+// emailed link (confirmation or password reset) is expired or reused.
+// Without saying so, the visitor just sees a login form and no reason.
+const CALLBACK_ERRORS: Record<string, string> = {
+  auth_callback_failed:
+    'That link is invalid or has expired — each link works only once. Sign in, or request a new reset link.',
+}
+
+export default function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string | string[] }>
+}) {
+  const { error: callbackError } = use(searchParams)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(
+    typeof callbackError === 'string' ? CALLBACK_ERRORS[callbackError] ?? null : null,
+  )
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
   const supabase = createClient()
@@ -35,8 +50,8 @@ export default function LoginPage() {
 
       router.push('/dashboard')
       router.refresh()
-    } catch (err: any) {
-      setError(err.message || 'An error occurred during login')
+    } catch (err) {
+      setError(err instanceof Error && err.message ? err.message : 'An error occurred during login')
     } finally {
       setIsLoading(false)
     }
@@ -73,7 +88,7 @@ export default function LoginPage() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="password" className="text-foreground">Password</Label>
-              <Link href="#" className="text-xs text-primary hover:text-primary/80 transition-colors">
+              <Link href="/forgot-password" className="text-xs text-primary hover:text-primary/80 transition-colors">
                 Forgot password?
               </Link>
             </div>

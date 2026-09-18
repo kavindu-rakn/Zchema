@@ -1,4 +1,4 @@
-import Image from "next/image";
+import { LogoMark } from "@/components/brand/logo-mark";
 
 export default function AuthLayout({
   children,
@@ -13,10 +13,10 @@ export default function AuthLayout({
       <div className="w-full max-w-md z-10 px-4">
         <div className="flex flex-col items-center mb-8">
           <div className="w-16 h-16 rounded-xl flex items-center justify-center mb-4 overflow-hidden shadow-[0_0_20px_rgba(52,211,153,0.15)] border border-primary/20">
-            <Image src="/logo-nobg.png" alt="Zchema Logo" width={64} height={64} className="object-contain w-full h-full" priority />
+            <LogoMark className="h-10 w-10 text-primary" />
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">Zchema</h1>
-          <p className="text-sm text-muted-foreground mt-2">Dynamic Catalog Management System</p>
+          <p className="text-sm text-muted-foreground mt-2">See what breaks before it breaks</p>
         </div>
         {children}
       </div>

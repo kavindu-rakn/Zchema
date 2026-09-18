@@ -57,6 +57,21 @@ export interface CategorySheetProps {
   category?: Category | null;
 }
 
+type Sibling = { id: string; name: string; slug: string };
+
+/** What the sheet fetches when it opens, tagged with the request it answers. */
+interface SheetContext {
+  request: string;
+  inherited: EffectiveField[];
+  blueprints: Blueprint[];
+  siblings: Sibling[];
+}
+
+// Stable empties, so memos keyed on these lists don't recompute every render.
+const NO_FIELDS: EffectiveField[] = [];
+const NO_BLUEPRINTS: Blueprint[] = [];
+const NO_SIBLINGS: Sibling[] = [];
+
 export function CategorySheet({
   open,
   onOpenChange,
@@ -76,29 +91,38 @@ export function CategorySheet({
   const [blueprintId, setBlueprintId] = useState<string>("");
   const [draftFields, setDraftFields] = useState<SchemaField[]>([]);
 
-  const [inherited, setInherited] = useState<EffectiveField[]>([]);
-  const [blueprints, setBlueprints] = useState<Blueprint[]>([]);
-  const [siblings, setSiblings] = useState<{ name: string; slug: string; id: string }[]>([]);
-  const [loading, setLoading] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  // Reset whenever the sheet opens so a previous edit never leaks in.
-  useEffect(() => {
-    if (!open) return;
-    setName(category?.name ?? "");
-    setDescription(category?.description ?? "");
-    setIcon(category?.icon ?? null);
-    setColor(category?.color ?? null);
-    setStartFrom("inherited");
-    setBlueprintId("");
-    setDraftFields([]);
-  }, [open, category]);
+  // Reset whenever the sheet opens (or is pointed at another category) so a
+  // previous edit never leaks in. Done during render, not in an effect.
+  const [seededFor, setSeededFor] = useState({ open: false, category });
+  if (open !== seededFor.open || category !== seededFor.category) {
+    setSeededFor({ open, category });
+    if (open) {
+      setName(category?.name ?? "");
+      setDescription(category?.description ?? "");
+      setIcon(category?.icon ?? null);
+      setColor(category?.color ?? null);
+      setStartFrom("inherited");
+      setBlueprintId("");
+      setDraftFields([]);
+    }
+  }
 
-  // Resolve what the new node will inherit, plus siblings and presets.
+  // Resolve what the new node will inherit, plus siblings and presets. The
+  // answer is stored with the request it answers, so `loading` is derived
+  // and one parent's siblings never show against another's.
+  const contextRequest = open ? `${effectiveParentId ?? "root"}|${category?.id ?? "new"}` : null;
+  const [context, setContext] = useState<SheetContext | null>(null);
+  const current = context?.request === contextRequest ? context : null;
+  const inherited = current?.inherited ?? NO_FIELDS;
+  const blueprints = current?.blueprints ?? NO_BLUEPRINTS;
+  const siblings = current?.siblings ?? NO_SIBLINGS;
+  const loading = contextRequest !== null && !current;
+
   useEffect(() => {
-    if (!open) return;
+    if (!contextRequest) return;
     let cancelled = false;
-    setLoading(true);
 
     (async () => {
       const supabase = createClient();
@@ -117,20 +141,18 @@ export function CategorySheet({
       ]);
 
       if (cancelled) return;
-      setInherited((schemaRes.data ?? []) as EffectiveField[]);
-      setBlueprints((blueprintRes.data ?? []) as Blueprint[]);
-      setSiblings(
-        ((siblingRes.data ?? []) as { id: string; name: string; slug: string }[]).filter(
-          (row) => row.id !== category?.id
-        )
-      );
-      setLoading(false);
+      setContext({
+        request: contextRequest,
+        inherited: (schemaRes.data ?? []) as EffectiveField[],
+        blueprints: (blueprintRes.data ?? []) as Blueprint[],
+        siblings: ((siblingRes.data ?? []) as Sibling[]).filter((row) => row.id !== category?.id),
+      });
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [open, effectiveParentId, category?.id]);
+  }, [contextRequest, effectiveParentId, category?.id]);
 
   const slug = useMemo(() => slugify(name), [name]);
   const duplicate = useMemo(

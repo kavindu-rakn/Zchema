@@ -1,6 +1,6 @@
 "use client";
 
-import { CATEGORY_COLORS, CATEGORY_ICONS, ICON_NAMES, iconFor } from "./category-icons";
+import { CATEGORY_COLORS, CATEGORY_ICONS, CategoryIcon, ICON_NAMES } from "./category-icons";
 import { cn } from "@/lib/utils";
 
 export function IconColorPicker({
@@ -14,8 +14,6 @@ export function IconColorPicker({
   onIconChange: (icon: string | null) => void;
   onColorChange: (color: string | null) => void;
 }) {
-  const Preview = iconFor(icon);
-
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3">
@@ -23,7 +21,7 @@ export function IconColorPicker({
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-card"
           aria-hidden
         >
-          <Preview className="h-4 w-4" style={color ? { color } : undefined} />
+          <CategoryIcon icon={icon} className="h-4 w-4" style={color ? { color } : undefined} />
         </span>
         <p className="text-xs text-muted-foreground">
           Shown in the tree. Optional — a plain folder is used otherwise.

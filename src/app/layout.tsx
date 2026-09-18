@@ -19,7 +19,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Zchema",
   description:
-    "A schema management system for catalog data. Define fields on a category, inherit them down the tree, and change your data model against live records.",
+    "Change your data model against live records — and see exactly what breaks before it breaks.",
 };
 
 // Applied before first paint so a saved density does not flash from

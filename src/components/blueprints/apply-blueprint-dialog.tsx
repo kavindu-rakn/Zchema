@@ -53,38 +53,42 @@ export function ApplyBlueprintDialog({
 }) {
   const router = useRouter();
   const [target, setTarget] = useState<string | null>(null);
-  const [preview, setPreview] = useState<Preview | null>(null);
-  const [loading, setLoading] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  useEffect(() => {
-    if (!open) {
-      setTarget(null);
-      setPreview(null);
-    }
-  }, [open]);
+  // Closing forgets the chosen category, so reopening starts fresh.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (!open) setTarget(null);
+  }
+
+  // Each preview is stored with the request it answers: loading is "no
+  // answer for the current request yet", and an answer for a previous
+  // target (or a closed dialog) is ignored rather than reset.
+  const previewRequest = open && target ? `${blueprintId}|${target}` : null;
+  const [previewResult, setPreviewResult] = useState<{
+    request: string;
+    preview: Preview | null;
+  } | null>(null);
+  const preview =
+    previewResult && previewResult.request === previewRequest ? previewResult.preview : null;
+  const loading = previewRequest !== null && previewResult?.request !== previewRequest;
 
   useEffect(() => {
-    if (!open || !target) return;
+    if (!previewRequest || !target) return;
     let cancelled = false;
-    setLoading(true);
 
     (async () => {
       const result = await previewBlueprintApply(blueprintId, target);
       if (cancelled) return;
-      if (!result.ok) {
-        toast.error(result.error);
-        setPreview(null);
-      } else {
-        setPreview(result.data);
-      }
-      setLoading(false);
+      if (!result.ok) toast.error(result.error);
+      setPreviewResult({ request: previewRequest, preview: result.ok ? result.data : null });
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [open, target, blueprintId]);
+  }, [previewRequest, blueprintId, target]);
 
   const confirm = () => {
     if (!target) return;

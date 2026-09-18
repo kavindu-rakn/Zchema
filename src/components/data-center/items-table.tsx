@@ -6,7 +6,7 @@
 // server-side (see query_items) — filtering the current page in the
 // browser is fine at 20 rows and wrong at 2,000.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -33,6 +33,7 @@ import {
   formatCell,
   SCHEMA_VERSION_COLUMN,
 } from "@/lib/items-table";
+import { parseStoredList, useStoredValue, writeStoredValue } from "@/lib/use-stored-value";
 import { cn } from "@/lib/utils";
 import { BulkActionsBar } from "@/components/data-center/bulk-actions-bar";
 import type { ItemFilter, ItemHealthCounts, ItemRow } from "@/lib/data/items";
@@ -84,15 +85,17 @@ export function ItemsTable({
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const [visible, setVisible] = useState<string[]>(() => defaultVisibleColumns(schema));
   const [openItem, setOpenItem] = useState<ItemRow | null>(null);
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  // Selection is per page of results; a new page means a new set.
-  useEffect(() => {
+  // Selection is per page of results; a new page means a new set. Reset
+  // during render when the rows change, not in an effect afterwards.
+  const [selectionFor, setSelectionFor] = useState(rows);
+  if (rows !== selectionFor) {
+    setSelectionFor(rows);
     setSelected(new Set());
-  }, [rows]);
+  }
 
   const toggleRow = (id: string) =>
     setSelected((previous) => {
@@ -105,36 +108,22 @@ export function ItemsTable({
   const allSelected = rows.length > 0 && rows.every((row) => selected.has(row.id));
 
   const storageKey = `zchema:columns:${categoryId}`;
+  const storedColumns = useStoredValue(storageKey);
 
-  // Per-category column choice, restored after mount so SSR agrees.
-  useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(storageKey);
-      if (stored) {
-        const parsed = JSON.parse(stored) as string[];
-        // A stored key whose field has since been removed is dropped;
-        // metadata columns are not in `schema` and must survive it.
-        const stillValid = parsed.filter(
-          (key) => key === SCHEMA_VERSION_COLUMN || schema.some((f) => f.key === key)
-        );
-        if (stillValid.length) {
-          setVisible(stillValid);
-          return;
-        }
-      }
-    } catch {
-      // Fall through to defaults.
-    }
-    setVisible(defaultVisibleColumns(schema));
-  }, [storageKey, schema]);
+  // Per-category column choice, derived rather than copied into state. A
+  // stored key whose field has since been removed is dropped; metadata
+  // columns are not in `schema` and must survive it; an empty or unreadable
+  // choice falls back to the defaults. Before hydration the defaults render,
+  // exactly as on the server.
+  const visible = useMemo(() => {
+    const stillValid = (parseStoredList(storedColumns) ?? []).filter(
+      (key) => key === SCHEMA_VERSION_COLUMN || schema.some((f) => f.key === key)
+    );
+    return stillValid.length ? stillValid : defaultVisibleColumns(schema);
+  }, [storedColumns, schema]);
 
   const updateVisible = (keys: string[]) => {
-    setVisible(keys);
-    try {
-      window.localStorage.setItem(storageKey, JSON.stringify(keys));
-    } catch {
-      // Choice just won't persist.
-    }
+    writeStoredValue(storageKey, JSON.stringify(keys));
   };
 
   const filters = useMemo(
