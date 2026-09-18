@@ -4,7 +4,7 @@
 // How a blueprint library actually gets built: by promoting something
 // that already worked, not by authoring in the abstract.
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { BookmarkPlus } from "lucide-react";
 import { toast } from "sonner";
@@ -35,12 +35,13 @@ export function SaveAsBlueprint({
   const [description, setDescription] = useState("");
   const [pending, startTransition] = useTransition();
 
-  useEffect(() => {
-    if (open) {
-      setName(`${categoryName} fields`);
-      setDescription("");
-    }
-  }, [open, categoryName]);
+  // Seeded by the button that opens the dialog — the one place it opens —
+  // rather than by an effect watching `open`.
+  const openDialog = () => {
+    setName(`${categoryName} fields`);
+    setDescription("");
+    setOpen(true);
+  };
 
   const submit = () => {
     const trimmed = name.trim();
@@ -66,7 +67,7 @@ export function SaveAsBlueprint({
       <Button
         size="sm"
         variant="outline"
-        onClick={() => setOpen(true)}
+        onClick={openDialog}
         disabled={ownFields.length === 0}
         title={
           ownFields.length === 0

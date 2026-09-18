@@ -6,13 +6,19 @@
 // clamped, and persisted — as is the set of expanded nodes, so the
 // tree looks the same when you come back to it.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Search } from "lucide-react";
 
 import { CategoryTree } from "@/components/data-center/category-tree";
 import { NewRootCategory } from "@/components/data-center/new-root-category";
 import { ImportEntry } from "@/components/import/import-entry";
+import {
+  parseStoredList,
+  readStoredValue,
+  useStoredValue,
+  writeStoredValue,
+} from "@/lib/use-stored-value";
 import { cn } from "@/lib/utils";
 import type { CategoryNode } from "@/lib/types";
 
@@ -30,59 +36,56 @@ export function activeIdFromPath(pathname: string): string | null {
   return segment;
 }
 
+function clampWidth(value: number): number {
+  return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, value));
+}
+
+function parseWidth(raw: string | null | undefined): number {
+  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  return Number.isFinite(parsed) ? clampWidth(parsed) : DEFAULT_WIDTH;
+}
+
 export function useTreeExpansion(tree: CategoryNode[]) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [hydrated, setHydrated] = useState(false);
+  const stored = useStoredValue(EXPANDED_KEY);
+  const hydrated = stored !== undefined;
 
-  // Restore after mount so server and client markup agree.
-  useEffect(() => {
-    let restored: string[] | null = null;
-    try {
-      const stored = window.localStorage.getItem(EXPANDED_KEY);
-      if (stored) restored = JSON.parse(stored) as string[];
-    } catch {
-      restored = null;
-    }
-    // Default: roots open, deeper levels collapsed.
-    setExpanded(new Set(restored ?? tree.map((node) => node.id)));
-    setHydrated(true);
-    // Only on mount — later tree changes must not clobber user state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Default: roots open, deeper levels collapsed. Captured from the tree as
+  // first rendered — later tree changes must not reshape the user's view.
+  const [defaultIds] = useState(() => tree.map((node) => node.id));
 
-  const persist = useCallback((next: Set<string>) => {
-    try {
-      window.localStorage.setItem(EXPANDED_KEY, JSON.stringify([...next]));
-    } catch {
-      // Storage unavailable — expansion just won't persist.
-    }
-  }, []);
+  // Until hydrated nothing is expanded: the same markup the server sent.
+  const expanded = useMemo(
+    () => (hydrated ? new Set(parseStoredList(stored) ?? defaultIds) : new Set<string>()),
+    [hydrated, stored, defaultIds]
+  );
+
+  // Updates read the stored set at call time rather than closing over
+  // `expanded`, so two in one tick both land — the guarantee the old
+  // functional setState gave.
+  const current = useCallback(
+    () => new Set(parseStoredList(readStoredValue(EXPANDED_KEY)) ?? defaultIds),
+    [defaultIds]
+  );
 
   const toggle = useCallback(
     (id: string) => {
-      setExpanded((previous) => {
-        const next = new Set(previous);
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
-        persist(next);
-        return next;
-      });
+      const next = current();
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      writeStoredValue(EXPANDED_KEY, JSON.stringify([...next]));
     },
-    [persist]
+    [current]
   );
 
   const expand = useCallback(
     (ids: string[]) => {
       if (!ids.length) return;
-      setExpanded((previous) => {
-        if (ids.every((id) => previous.has(id))) return previous;
-        const next = new Set(previous);
-        ids.forEach((id) => next.add(id));
-        persist(next);
-        return next;
-      });
+      const next = current();
+      if (ids.every((id) => next.has(id))) return;
+      ids.forEach((id) => next.add(id));
+      writeStoredValue(EXPANDED_KEY, JSON.stringify([...next]));
     },
-    [persist]
+    [current]
   );
 
   return { expanded, toggle, expand, hydrated };
@@ -97,18 +100,15 @@ export function Rail({
 }) {
   const pathname = usePathname();
   const [filter, setFilter] = useState("");
-  const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [dragging, setDragging] = useState(false);
   const railRef = useRef<HTMLElement | null>(null);
   const { expanded, toggle, expand } = useTreeExpansion(tree);
 
-  useEffect(() => {
-    const stored = window.localStorage.getItem(WIDTH_KEY);
-    const parsed = stored ? Number.parseInt(stored, 10) : NaN;
-    if (Number.isFinite(parsed)) {
-      setWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, parsed)));
-    }
-  }, []);
+  // Mid-drag the width follows the pointer without touching storage; it is
+  // written once, on release. Otherwise it is whatever was last saved.
+  const savedWidth = parseWidth(useStoredValue(WIDTH_KEY));
+  const [dragWidth, setDragWidth] = useState<number | null>(null);
+  const width = dragWidth ?? savedWidth;
 
   const activeId = activeIdFromPath(pathname);
 
@@ -122,7 +122,7 @@ export function Rail({
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (!dragging) return;
       const left = railRef.current?.getBoundingClientRect().left ?? 0;
-      setWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, event.clientX - left)));
+      setDragWidth(clampWidth(event.clientX - left));
     },
     [dragging]
   );
@@ -132,7 +132,8 @@ export function Rail({
       if (!dragging) return;
       setDragging(false);
       (event.target as HTMLElement).releasePointerCapture(event.pointerId);
-      window.localStorage.setItem(WIDTH_KEY, String(width));
+      writeStoredValue(WIDTH_KEY, String(width));
+      setDragWidth(null);
     },
     [dragging, width]
   );
@@ -146,9 +147,7 @@ export function Rail({
       else return;
 
       event.preventDefault();
-      next = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, next));
-      setWidth(next);
-      window.localStorage.setItem(WIDTH_KEY, String(next));
+      writeStoredValue(WIDTH_KEY, String(clampWidth(next)));
     },
     [width]
   );

@@ -5,7 +5,7 @@
 // It is now a controlled dialog opened from the avatar menu in the
 // top bar, so the shell owns its trigger and nothing floats.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 
@@ -49,10 +49,14 @@ export function RoleSwitcher({
   const [selectedRole, setSelectedRole] = useState<string>(profile?.role ?? "VIEWER");
   const [error, setError] = useState<string | null>(null);
 
-  // Keep the radio in sync when the profile changes underneath us.
-  useEffect(() => {
+  // Keep the radio in sync when the profile changes underneath us —
+  // adjusted during render rather than in an effect, so there is no
+  // intermediate render showing the stale role.
+  const [syncedRole, setSyncedRole] = useState(profile?.role);
+  if (profile?.role !== syncedRole) {
+    setSyncedRole(profile?.role);
     setSelectedRole(profile?.role ?? "VIEWER");
-  }, [profile?.role]);
+  }
 
   if (!canSwitchRole(user?.email)) return null;
 

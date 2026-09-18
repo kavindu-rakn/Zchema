@@ -31,7 +31,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { iconFor } from "@/components/data-center/category-icons";
+import { CategoryIcon } from "@/components/data-center/category-icons";
 import { TreeHoverCard } from "@/components/data-center/tree-hover-card";
 import { CategorySheet } from "@/components/data-center/category-sheet";
 import { MoveCategoryDialog } from "@/components/data-center/move-category-dialog";
@@ -125,7 +125,6 @@ const TreeNode = memo(function TreeNode({
 }: TreeNodeProps) {
   const { node, depth, isLast, guides, hits } = row;
   const hasChildren = node.children.length > 0;
-  const Icon = iconFor(node.icon);
 
   // A node with children but no fields of its own organises rather than
   // defines — worth distinguishing from a node that carries schema.
@@ -236,7 +235,8 @@ const TreeNode = memo(function TreeNode({
             onFocus={() => onFocus(node.id)}
             className="flex min-w-0 flex-1 items-center gap-1.5 text-sm focus:outline-none"
           >
-            <Icon
+            <CategoryIcon
+              icon={node.icon}
               className="h-3.5 w-3.5 shrink-0"
               style={node.color ? { color: node.color } : undefined}
               aria-hidden

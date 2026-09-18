@@ -9,7 +9,7 @@
 // Fields are grouped by WHERE THEY CAME FROM, which is the whole point:
 // "Inherited from Electronics" reads very differently from a flat list.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, ExternalLink, RotateCcw, Trash2, TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -55,6 +55,18 @@ function seedValues(
   return seeded;
 }
 
+/** A saved draft for this form, or nothing. Never throws. */
+function readDraft(draftKey: string | null, disabled: boolean): Record<string, unknown> {
+  if (!draftKey || disabled || typeof window === "undefined") return {};
+  try {
+    const stored = window.sessionStorage.getItem(draftKey);
+    return stored ? JSON.parse(stored) : {};
+  } catch {
+    // Corrupt or unavailable storage — start clean.
+    return {};
+  }
+}
+
 export interface DynamicFormProps {
   schema: EffectiveField[];
   /** Stored item data. Changing this (or itemId) resets the form. */
@@ -95,46 +107,48 @@ export function DynamicForm({
   onRestoreOrphan,
   onDiscardOrphan,
 }: DynamicFormProps) {
-  const [values, setValues] = useState<Record<string, unknown>>(() =>
-    seedValues(schema, initialData ?? {})
-  );
+  const draftKey = categoryId ? `zchema:draft:${categoryId}:${itemId ?? "new"}` : null;
+  const incomingBaseline = useMemo(() => JSON.stringify(initialData ?? {}), [initialData]);
+
+  // An interrupted draft is folded into the first values, so an accidental
+  // dialog close does not lose a half-filled form.
+  const [values, setValues] = useState<Record<string, unknown>>(() => ({
+    ...seedValues(schema, initialData ?? {}),
+    ...readDraft(draftKey, disabled),
+  }));
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [submitted, setSubmitted] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [orphansOpen, setOrphansOpen] = useState(false);
 
-  const draftKey = categoryId ? `zchema:draft:${categoryId}:${itemId ?? "new"}` : null;
-  const baselineRef = useRef<string>(JSON.stringify(initialData ?? {}));
-
-  // Reset when the form is reused for a different item. The previous
-  // implementation seeded state once, so reopening the dialog on another
-  // row kept the first row's values.
-  useEffect(() => {
-    setValues(seedValues(schema, initialData ?? {}));
+  // Re-seed when the form is pointed at a different item, or when the same
+  // item's stored data changes underneath it (restoring an orphan refreshes
+  // it in place). Compared by CONTENT, not identity: callers pass
+  // `item?.data ?? {}`, a new object on every render, and an identity check
+  // wiped a half-filled new-item form whenever its parent re-rendered —
+  // which a save does, so a failed "Create item" lost everything typed.
+  // Done during render ("adjusting state when a prop changes") rather than
+  // in an effect, so the reset and its baseline land in the same pass.
+  // `schema` is deliberately not a trigger: a schema edit must not wipe
+  // half-entered values.
+  const [baseline, setBaseline] = useState(incomingBaseline);
+  const [seededFor, setSeededFor] = useState(itemId);
+  if (incomingBaseline !== baseline || itemId !== seededFor) {
+    const switchedItem = itemId !== seededFor;
+    setBaseline(incomingBaseline);
+    setSeededFor(itemId);
+    setValues({
+      ...seedValues(schema, initialData ?? {}),
+      ...(switchedItem ? readDraft(draftKey, disabled) : {}),
+    });
     setTouched(new Set());
     setSubmitted(false);
-    baselineRef.current = JSON.stringify(initialData ?? {});
-    // `schema` is intentionally excluded: a schema edit should not wipe
-    // half-entered values.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemId, initialData]);
-
-  // Restore an interrupted draft, so an accidental dialog close does
-  // not lose a half-filled form.
-  useEffect(() => {
-    if (!draftKey || disabled) return;
-    try {
-      const stored = window.sessionStorage.getItem(draftKey);
-      if (stored) setValues((previous) => ({ ...previous, ...JSON.parse(stored) }));
-    } catch {
-      // Corrupt or unavailable storage — start clean.
-    }
-  }, [draftKey, disabled]);
+  }
 
   const errors = useMemo(() => validateItemData(schema, values), [schema, values]);
   const dirty = useMemo(
-    () => JSON.stringify(normaliseForSave(schema, values)) !== baselineRef.current,
-    [schema, values]
+    () => JSON.stringify(normaliseForSave(schema, values)) !== baseline,
+    [schema, values, baseline]
   );
 
   useEffect(() => {

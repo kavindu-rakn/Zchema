@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -26,12 +26,16 @@ export function NewBlueprintDialog({
   const [description, setDescription] = useState("");
   const [pending, startTransition] = useTransition();
 
-  useEffect(() => {
+  // Closing clears the form, so reopening starts blank. Adjusted during
+  // render when `open` changes rather than in an effect afterwards.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
     if (!open) {
       setName("");
       setDescription("");
     }
-  }, [open]);
+  }
 
   const submit = () => {
     const trimmed = name.trim();

@@ -66,13 +66,6 @@ const FIELD_TYPES: FieldType[] = [
   "url",
 ];
 
-/** Properties a descendant is allowed to patch. */
-const OVERRIDE_LABELS: { key: keyof FieldOverride; label: string }[] = [
-  { key: "label", label: "Label" },
-  { key: "required", label: "Required" },
-  { key: "help_text", label: "Help text" },
-];
-
 type DraftField = SchemaField & { _uid: string; _locked: boolean };
 
 let uidCounter = 0;

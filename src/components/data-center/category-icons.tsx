@@ -30,7 +30,9 @@ import {
   Watch,
   Wrench,
   type LucideIcon,
+  type LucideProps,
 } from "lucide-react";
+import { createElement } from "react";
 
 export const CATEGORY_ICONS: Record<string, LucideIcon> = {
   bike: Bike,
@@ -65,6 +67,20 @@ export const ICON_NAMES = Object.keys(CATEGORY_ICONS);
 /** The icon for a stored name, falling back to a plain folder. */
 export function iconFor(name: string | null | undefined): LucideIcon {
   return (name && CATEGORY_ICONS[name]) || Folder;
+}
+
+/**
+ * Render a stored icon name. Use this rather than `const Icon =
+ * iconFor(name)` followed by `<Icon />` inside a component. Nothing would
+ * actually remount — every icon comes from the static map above — but the
+ * React compiler cannot prove that, so it reports the pattern as a
+ * component created during render. createElement sidesteps that.
+ */
+export function CategoryIcon({
+  icon,
+  ...props
+}: { icon: string | null | undefined } & LucideProps) {
+  return createElement(iconFor(icon), props);
 }
 
 /** Swatches offered by the icon/colour picker. */

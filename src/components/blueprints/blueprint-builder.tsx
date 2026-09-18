@@ -6,7 +6,7 @@
 // vocabulary though — the full FieldType union plus position, unit and
 // help_text.
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Reorder, useDragControls } from "framer-motion";
 import { GripVertical, Plus, Trash2 } from "lucide-react";
@@ -53,10 +53,13 @@ export function BlueprintBuilder({
   const [fields, setFields] = useState<DraftField[]>(() => toDraft(blueprint.fields ?? []));
   const [pending, startTransition] = useTransition();
 
-  // Reset when navigating between blueprints.
-  useEffect(() => {
+  // Reset when navigating between blueprints, or when a save refreshes this
+  // one's fields. Adjusted during render rather than in an effect.
+  const [seededFrom, setSeededFrom] = useState({ id: blueprint.id, fields: blueprint.fields });
+  if (blueprint.id !== seededFrom.id || blueprint.fields !== seededFrom.fields) {
+    setSeededFrom({ id: blueprint.id, fields: blueprint.fields });
     setFields(toDraft(blueprint.fields ?? []));
-  }, [blueprint.id, blueprint.fields]);
+  }
 
   const dirty = useMemo(
     () => JSON.stringify(strip(fields)) !== JSON.stringify(blueprint.fields ?? []),

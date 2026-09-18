@@ -69,42 +69,48 @@ export function BulkActionsBar({
   const [mode, setMode] = useState<"delete" | "edit" | "move" | null>(null);
   const [fieldKey, setFieldKey] = useState<string>("");
   const [target, setTarget] = useState<string | null>(null);
-  const [preview, setPreview] = useState<MovePreview | null>(null);
-  const [loadingPreview, setLoadingPreview] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
 
   const needsTypedConfirm = selected.length > TYPED_CONFIRM_THRESHOLD;
   const deleteConfirmed =
     !needsTypedConfirm || deleteConfirmation.trim() === String(selected.length);
 
-  useEffect(() => {
-    if (mode !== "move") {
-      setTarget(null);
-      setPreview(null);
-    }
-  }, [mode]);
+  // Leaving "move" forgets the destination, so reopening starts fresh.
+  const [lastMode, setLastMode] = useState(mode);
+  if (mode !== lastMode) {
+    setLastMode(mode);
+    if (mode !== "move") setTarget(null);
+  }
+
+  // Each preview is stored with the request it answers. Loading is then
+  // "no answer for the current request yet", and a stale answer — for a
+  // previous destination, or after leaving move mode — is simply ignored,
+  // so nothing has to be reset or flagged synchronously in the effect.
+  const previewRequest =
+    mode === "move" && target ? `${target}|${selected.join(",")}` : null;
+  const [previewResult, setPreviewResult] = useState<{
+    request: string;
+    preview: MovePreview | null;
+  } | null>(null);
+  const preview =
+    previewResult && previewResult.request === previewRequest ? previewResult.preview : null;
+  const loadingPreview = previewRequest !== null && previewResult?.request !== previewRequest;
 
   useEffect(() => {
-    if (mode !== "move" || !target) return;
+    if (!previewRequest || !target) return;
     let cancelled = false;
-    setLoadingPreview(true);
 
     (async () => {
       const result = await previewItemMove(selected, target);
       if (cancelled) return;
-      if (!result.ok) {
-        toast.error(result.error);
-        setPreview(null);
-      } else {
-        setPreview(result.data);
-      }
-      setLoadingPreview(false);
+      if (!result.ok) toast.error(result.error);
+      setPreviewResult({ request: previewRequest, preview: result.ok ? result.data : null });
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [mode, target, selected]);
+  }, [previewRequest, selected, target]);
 
   const close = () => {
     setMode(null);
