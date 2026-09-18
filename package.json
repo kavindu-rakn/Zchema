@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test src/**/*.test.ts"
+    "test": "node --test \"src/**/*.test.ts\" \"supabase/**/*.test.ts\"",
+    "db:new": "npx --yes supabase@2.117.0 migration new",
+    "db:push": "npx --yes supabase@2.117.0 db push",
+    "db:status": "npx --yes supabase@2.117.0 migration list"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

@@ -7,24 +7,19 @@
 -- it inherits from ancestors. Blueprints (formerly templates) are
 -- demoted to optional starter presets — no live link.
 --
--- Load order: schema.sql  →  functions.sql  (resolvers, Increment 2).
+-- Load order: schema → functions → triggers → policies → impact →
+-- attributes → search → import → onboarding.
+--
+-- This file is the readable source of truth for the tables; what a
+-- database actually runs is supabase/migrations/ (see AGENTS.md).
+-- It is safe to re-run: tables and indexes are IF NOT EXISTS, and it
+-- never drops anything. A CREATE TABLE IF NOT EXISTS does not reshape
+-- a table that already exists, so a column change needs a migration.
 -- ============================================================
 
--- ============================================================
--- 0. Destructive rebuild
--- ------------------------------------------------------------
--- ⚠️  DESTRUCTIVE. This drops every application table and its
--- data. This is intentional for the Phase 1 overhaul — there is
--- no back-compat shim. Do NOT run against production data you
--- care about without a backup.
--- ============================================================
-DROP TABLE IF EXISTS public.items          CASCADE;
-DROP TABLE IF EXISTS public.schema_versions CASCADE;
-DROP TABLE IF EXISTS public.attributes      CASCADE;
-DROP TABLE IF EXISTS public.categories      CASCADE;
-DROP TABLE IF EXISTS public.blueprints      CASCADE;
-DROP TABLE IF EXISTS public.templates       CASCADE;  -- legacy, pre-overhaul
-DROP TABLE IF EXISTS public.profiles        CASCADE;
+-- The destructive rebuild that used to open this file now lives in
+-- supabase/dev/reset.sql, where running it has to be deliberate. With
+-- it here, re-applying the schema to a live database wiped every row.
 
 
 -- ============================================================
@@ -37,7 +32,7 @@ DROP TABLE IF EXISTS public.profiles        CASCADE;
 --   DATA_EDITOR   (was DATA_CONTRIBUTOR)
 --   VIEWER        (unchanged)
 -- ============================================================
-CREATE TABLE public.profiles (
+CREATE TABLE IF NOT EXISTS public.profiles (
   id         UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email      TEXT,
   role       TEXT NOT NULL DEFAULT 'VIEWER'
@@ -54,7 +49,7 @@ CREATE TABLE public.profiles (
 -- fields into a category's own_fields; there is no live link.
 -- `fields` is a JSONB array of SchemaField objects.
 -- ============================================================
-CREATE TABLE public.blueprints (
+CREATE TABLE IF NOT EXISTS public.blueprints (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name        TEXT NOT NULL UNIQUE,
   description TEXT,
@@ -74,7 +69,7 @@ CREATE TABLE public.blueprints (
 --                options/default/help_text/position only).
 --   blueprint_id : provenance only (nullable, SET NULL on delete).
 -- ============================================================
-CREATE TABLE public.categories (
+CREATE TABLE IF NOT EXISTS public.categories (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name         TEXT NOT NULL,
   slug         TEXT NOT NULL,
@@ -98,7 +93,7 @@ CREATE TABLE public.categories (
 -- effective schema. `data` may contain a `__orphaned` sub-object
 -- holding values whose field has since disappeared.
 -- ============================================================
-CREATE TABLE public.items (
+CREATE TABLE IF NOT EXISTS public.items (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   category_id    UUID NOT NULL REFERENCES public.categories(id) ON DELETE CASCADE,
   data           JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -124,7 +119,7 @@ CREATE TABLE public.items (
 --               not which properties the patch carried. Storing the
 --               authored state makes rollback exact instead of lossy.
 -- ============================================================
-CREATE TABLE public.schema_versions (
+CREATE TABLE IF NOT EXISTS public.schema_versions (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   category_id    UUID NOT NULL REFERENCES public.categories(id) ON DELETE CASCADE,
   version        INTEGER NOT NULL,
@@ -143,7 +138,7 @@ CREATE TABLE public.schema_versions (
 -- Populated in Phase 6. The table exists now so the FK graph is
 -- stable and SchemaField.attribute_id has a target.
 -- ============================================================
-CREATE TABLE public.attributes (
+CREATE TABLE IF NOT EXISTS public.attributes (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   key         TEXT NOT NULL UNIQUE,
   label       TEXT NOT NULL,
@@ -160,28 +155,28 @@ CREATE TABLE public.attributes (
 -- 7. Indexes
 -- ============================================================
 -- GIN index for fast JSONB containment / key-exists queries on items.
-CREATE INDEX idx_items_data_gin ON public.items USING gin (data);
+CREATE INDEX IF NOT EXISTS idx_items_data_gin ON public.items USING gin (data);
 
 -- Hierarchical category lookups.
-CREATE INDEX idx_categories_parent ON public.categories (parent_id);
+CREATE INDEX IF NOT EXISTS idx_categories_parent ON public.categories (parent_id);
 
 -- Category → blueprint provenance joins.
-CREATE INDEX idx_categories_blueprint ON public.categories (blueprint_id);
+CREATE INDEX IF NOT EXISTS idx_categories_blueprint ON public.categories (blueprint_id);
 
 -- Item → category joins.
-CREATE INDEX idx_items_category ON public.items (category_id);
+CREATE INDEX IF NOT EXISTS idx_items_category ON public.items (category_id);
 
 -- Slug uniqueness: unique within a parent, and unique among roots.
-CREATE UNIQUE INDEX unique_category_slug_parent
+CREATE UNIQUE INDEX IF NOT EXISTS unique_category_slug_parent
   ON public.categories (parent_id, slug) WHERE parent_id IS NOT NULL;
-CREATE UNIQUE INDEX unique_category_slug_root
+CREATE UNIQUE INDEX IF NOT EXISTS unique_category_slug_root
   ON public.categories (slug) WHERE parent_id IS NULL;
 
 -- GIN index over own_fields for field-key lookups.
-CREATE INDEX idx_categories_own_fields ON public.categories USING gin (own_fields);
+CREATE INDEX IF NOT EXISTS idx_categories_own_fields ON public.categories USING gin (own_fields);
 
 -- Schema version history lookups, newest first.
-CREATE INDEX idx_schema_versions_category
+CREATE INDEX IF NOT EXISTS idx_schema_versions_category
   ON public.schema_versions (category_id, version DESC);
 
 
@@ -274,14 +269,14 @@ CREATE TRIGGER on_auth_user_created
 -- 9b. Backfill profiles for accounts that already exist
 -- ------------------------------------------------------------
 -- handle_new_user() only fires when an auth.users row is INSERTED, but
--- §0 drops and recreates `profiles`. Re-running this file against a
--- project that already has accounts therefore leaves every one of them
--- with no profile: no role, and every requireProfile() call failing.
+-- supabase/dev/reset.sql drops `profiles` while every account survives
+-- in auth.users. Rebuilding after a reset would otherwise leave each of
+-- them with no profile: no role, and every requireProfile() call failing.
 --
 -- Recreate the missing rows by the bootstrap rule — if no SCHEMA_ADMIN
 -- exists, the oldest account becomes one; everyone else is VIEWER.
 -- Earlier role assignments cannot be recovered (they lived in the table
--- that was just dropped), so re-promote from Settings → Users.
+-- that was dropped), so re-promote from Settings → Users.
 -- A no-op on a fresh project, and on any project whose profiles are
 -- intact.
 -- ============================================================
