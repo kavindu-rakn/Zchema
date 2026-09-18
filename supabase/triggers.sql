@@ -71,11 +71,22 @@ BEGIN
     END IF;
 
     -- position is optional at the storage layer (the resolver defaults it
-    -- to 0); when present it must be an integer.
+    -- to 0); when present it must be an integer. try_numeric, because an
+    -- OR does not promise to test the type first — a bare ::numeric here
+    -- could raise a cast error instead of this message.
     IF fld ? 'position'
        AND (jsonb_typeof(fld->'position') <> 'number'
-            OR (fld->>'position')::numeric <> floor((fld->>'position')::numeric)) THEN
+            OR public.try_numeric(fld->>'position')
+               <> floor(public.try_numeric(fld->>'position'))) THEN
       RAISE EXCEPTION 'Field "%" position must be an integer', k;
+    END IF;
+
+    -- required is read with ::boolean all over the read path — the
+    -- dashboard's missing-required count, the Items tab's health filter,
+    -- impact analysis. Guaranteeing its type here, once, is what keeps
+    -- every one of those reads safe.
+    IF fld ? 'required' AND jsonb_typeof(fld->'required') <> 'boolean' THEN
+      RAISE EXCEPTION 'Field "%" required must be true or false', k;
     END IF;
   END LOOP;
 
@@ -133,6 +144,21 @@ BEGIN
     END IF;
     IF o_patch ? 'type' OR o_patch ? 'key' THEN
       RAISE EXCEPTION 'Override for "%" may not change "type" or "key"', o_key;
+    END IF;
+    -- An override lands in the effective schema, so it must meet the same
+    -- type rules as the field it patches (§A) — the reads cannot tell the
+    -- two apart.
+    IF o_patch ? 'required' AND jsonb_typeof(o_patch->'required') <> 'boolean' THEN
+      RAISE EXCEPTION 'Override for "%": required must be true or false', o_key;
+    END IF;
+    IF o_patch ? 'position'
+       AND (jsonb_typeof(o_patch->'position') <> 'number'
+            OR public.try_numeric(o_patch->>'position')
+               <> floor(public.try_numeric(o_patch->>'position'))) THEN
+      RAISE EXCEPTION 'Override for "%": position must be an integer', o_key;
+    END IF;
+    IF o_patch ? 'options' AND jsonb_typeof(o_patch->'options') <> 'array' THEN
+      RAISE EXCEPTION 'Override for "%": options must be an array', o_key;
     END IF;
   END LOOP;
 

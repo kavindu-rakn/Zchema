@@ -2,9 +2,12 @@
 
 import { PaneError } from "@/components/pane-error";
 
-export default function AttributeDetailError(props: {
+export default function AttributeDetailError({
+  error,
+  unstable_retry,
+}: {
   error: Error & { digest?: string };
-  reset: () => void;
+  unstable_retry: () => void;
 }) {
-  return <PaneError {...props} what="this attribute" />;
+  return <PaneError error={error} retry={unstable_retry} what="this attribute" />;
 }

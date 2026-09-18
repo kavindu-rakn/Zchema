@@ -87,10 +87,19 @@ is asked about rather than guessed.
 
 ## Screenshots
 
-> **Not yet captured.** The two worth having are the **Schema tab on `Gaming Laptops`**, showing
-> seven inherited fields from two ancestors above two of its own, and the **impact dialog**
-> mid-change with a destructive row expanded. [`docs/DEMO.md`](docs/DEMO.md) walks to both in
-> under two minutes.
+**The impact dialog.** Removing `has_rgb` from `Gaming Laptops` before it is applied: 15 items
+hold a value, and none of it is deleted unless you choose to — the default moves it to orphaned
+data, where it can be restored.
+
+![Impact dialog: removing has_rgb from Gaming Laptops, flagged destructive, with the move-to-orphaned-data remediation selected](docs/screenshots/impact-dialog.png)
+
+**The Schema tab.** `Gaming Laptops` inherits seven fields from two ancestors and defines two of
+its own. One inherited field, `warranty_months`, is overridden here; the preview on the right is
+the form a Data Editor will see.
+
+![Schema tab for Gaming Laptops: seven inherited fields from Electronics and Laptops, one override, and a live form preview](docs/screenshots/schema-tab.png)
+
+[`docs/DEMO.md`](docs/DEMO.md) walks to both in under two minutes.
 
 ---
 
@@ -102,7 +111,18 @@ cp .env.example .env.local   # add your Supabase URL and anon key
 npm run dev
 ```
 
-Then apply the SQL **in this order** — later files depend on earlier ones:
+The database ships as Supabase migrations. Against a new Supabase project (its reference ID is
+under **Project Settings → General**):
+
+```bash
+npx supabase login
+npx supabase link --project-ref <your-project-ref>
+npm run db:push     # applies supabase/migrations/ in order and records each one
+npm run db:status   # which migrations this database has run
+```
+
+The migrations are built from nine feature files, which are the place to read the database. They
+load in this order, each depending on the ones before it:
 
 | file | what it adds |
 |---|---|
@@ -116,7 +136,7 @@ Then apply the SQL **in this order** — later files depend on earlier ones:
 | `supabase/import.sql` | transactional import |
 | `supabase/onboarding.sql` | sample catalog, hint state |
 
-Then one seed:
+Then paste one seed into the SQL editor:
 
 | seed | shape |
 |---|---|
@@ -129,29 +149,42 @@ Roles: `SCHEMA_ADMIN` owns the data model, `DATA_EDITOR` owns item data only, `V
 The first account to sign up on a fresh instance becomes `SCHEMA_ADMIN`; everyone after it starts
 as `VIEWER` and is promoted from **Settings → Users**.
 
-`schema.sql` drops and recreates every table — never run it against data you want to keep.
-`functions.sql` through `onboarding.sql` are safe to re-run. Every seed file **replaces** the
-catalog.
+Every feature file is safe to re-run, and none of them drops a table. The one script that does is
+`supabase/dev/reset.sql`, for dev databases only. Every seed file **replaces** the catalog.
+
+To change the database, edit the feature file and add a migration carrying the same change —
+[`AGENTS.md`](AGENTS.md) has the rules.
 
 ### Tests
 
 ```bash
-npm test          # 246 unit tests: query DSL, inference, CSV, export, tree moves, redirects
-npm run build     # typecheck + production build
+npm test            # 278 tests: resolver cases, migration drift, query DSL, CSV, export, redirects
+npm run typecheck
+npm run lint
 ```
 
-SQL suites live in `supabase/tests/` and run in the Supabase SQL editor. Each ends in a
-result-set `SELECT` of PASS/FAIL rows.
+CI runs all three on every pull request. SQL suites live in `supabase/tests/` and run in the
+Supabase SQL editor; each ends in a result-set `SELECT` of PASS/FAIL rows.
+`resolver_differential_test.sql` is generated from the same resolver cases `npm test` uses —
+`npm run gen:resolver-sql` rewrites it after the fixture changes.
 
 ---
 
 ## Architecture decisions, and why
 
-**Schema composition lives in SQL, mirrored in TypeScript.** `get_effective_schema()` is the
-authority; `resolveEffectiveSchema()` in `src/lib/schema.ts` reproduces it exactly so the editor
-can preview a change without a round trip. The two must agree — a divergence surfaces as a UI
-that lies about what will happen — so the algorithm comment block is kept identical in both
-files.
+**Schema composition lives in SQL, mirrored in TypeScript, and one test holds all three copies
+together.** `get_effective_schema()` is the authority. `resolve_schema_preview()` resolves a
+*proposed* change for the impact dialog, and `resolveEffectiveSchema()` in `src/lib/schema.ts`
+resolves unsaved edits in the browser without a round trip. Three copies of one algorithm in two
+languages will drift, and drift surfaces as a UI that lies about what a save will do. So all
+three run against one shared file of cases: `npm test` checks the TypeScript copy, and a
+generated SQL suite checks the other two. On its first run the SQL suite failed 7 of its 26
+assertions. It passes now.
+
+**Migrations are checked against their source, without a database.** The feature files are
+what people read; the migrations are what databases run. `supabase/migrations.test.ts` replays
+both, statement by statement, and fails if any function, policy or trigger ends up different,
+if a function is left with two signatures, or if a feature file drops a table.
 
 **Type changes are per-category, never global.** You can edit a shared attribute's label and it
 propagates everywhere. You cannot edit its type. A global retype could touch thousands of items
@@ -174,8 +207,9 @@ is denied. Rolling back v5 to v3 writes v6; v4 and v5 stay readable forever.
 
 **Numeric comparison is guarded.** `WHERE (data->>'price')::numeric > 500` does not fail on the
 rows it rejects — it fails on rows it never meant to touch, the moment one item anywhere holds
-`"call for pricing"` under a key spelled `price`. Every comparison goes through `try_numeric()`,
-which yields NULL instead of aborting the statement.
+`"call for pricing"` under a key spelled `price`. Every cast on item data goes through
+`try_numeric()`, `try_boolean()` or `try_date()`, which yield NULL instead of aborting the
+statement.
 
 **Server actions re-check the role.** A Server Action is a public POST endpoint. RLS guards the
 tables underneath, but every mutation also checks the caller's role server-side, because

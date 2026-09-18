@@ -40,23 +40,114 @@ $$;
 
 
 -- ============================================================
+-- 1b. try_numeric(text) → NUMERIC or NULL
+-- ------------------------------------------------------------
+-- THE CLASSIC JSONB FOOTGUN.
+--
+-- `WHERE (data->>'price')::numeric > 500` does not fail on the rows it
+-- rejects — it fails on the rows it never meant to touch. One item in
+-- one unrelated category holding "call for pricing" in a key that
+-- happens to be spelled `price` aborts the entire query with
+-- "invalid input syntax for type numeric". Across a catalog-wide
+-- search that is not an edge case, it is Tuesday.
+--
+-- Every numeric read of JSONB goes through this — the one guarding
+-- strategy in the codebase. (Moved here from search.sql so that every
+-- file loaded after this one can rely on it.)
+--
+-- Guarding with a regex rather than a BEGIN/EXCEPTION block keeps the
+-- function inlinable and parallel-safe; an exception block would force
+-- a subtransaction per row.
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.try_numeric(p_value TEXT)
+RETURNS NUMERIC
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+SET search_path = ''
+AS $$
+  SELECT CASE
+    WHEN p_value ~ '^\s*-?\d+(\.\d+)?([eE][-+]?\d+)?\s*$'
+    THEN btrim(p_value)::numeric
+  END;
+$$;
+
+
+-- ============================================================
+-- 1c. try_boolean(text) / try_date(text) → value or NULL
+-- ------------------------------------------------------------
+-- The same footgun for the other two types item data is filtered and
+-- sorted by. `(data->>'in_stock')::boolean` aborts on one "maybe";
+-- `::date` aborts on "2024-02-30", which a digits-and-dashes regex
+-- happily lets through. Both return NULL instead of raising.
+--
+-- try_boolean accepts the unambiguous spellings Postgres itself does
+-- (true/false, t/f, yes/no, y/n, on/off, 1/0, any case).
+--
+-- try_date reads the leading YYYY-MM-DD and checks the day against the
+-- month's real length. The nested CASE is load-bearing: CASE evaluates
+-- its branches in order, so make_date() never sees a month that is out
+-- of range — no exception handler, and so no subtransaction per row.
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.try_boolean(p_value TEXT)
+RETURNS BOOLEAN
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+SET search_path = ''
+AS $$
+  SELECT CASE lower(btrim(p_value))
+    WHEN 'true'  THEN true  WHEN 't' THEN true  WHEN 'yes' THEN true
+    WHEN 'y'     THEN true  WHEN 'on' THEN true WHEN '1'   THEN true
+    WHEN 'false' THEN false WHEN 'f' THEN false WHEN 'no'  THEN false
+    WHEN 'n'     THEN false WHEN 'off' THEN false WHEN '0' THEN false
+  END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.try_date(p_value TEXT)
+RETURNS DATE
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+SET search_path = ''
+AS $$
+  SELECT CASE
+    WHEN d.parts IS NULL THEN NULL
+    WHEN d.parts[1]::int = 0 OR d.parts[2]::int NOT BETWEEN 1 AND 12 THEN NULL
+    WHEN d.parts[3]::int BETWEEN 1 AND extract(
+           day FROM make_date(d.parts[1]::int, d.parts[2]::int, 1)
+                    + interval '1 month' - interval '1 day')::int
+      THEN make_date(d.parts[1]::int, d.parts[2]::int, d.parts[3]::int)
+  END
+  FROM (SELECT regexp_match(p_value, '^\s*(\d{4})-(\d{2})-(\d{2})') AS parts) d;
+$$;
+
+
+-- ============================================================
 -- 2. get_effective_schema(p_category_id)  → JSONB[]  (EffectiveField[])
 -- ------------------------------------------------------------
 -- Folds own_fields down the ancestor chain and applies overrides.
--- MUST agree, key-for-key, with resolveEffectiveSchema() in
--- src/lib/schema.ts. Keep the algorithm comments identical.
+-- One of THREE implementations that must agree: this one,
+-- resolve_schema_preview() in impact.sql, and resolveEffectiveSchema()
+-- in src/lib/schema.ts. Keep the algorithm comments identical — a test
+-- checks that they are — and prove behaviour against the shared
+-- fixture, supabase/tests/fixtures/resolver-cases.json.
 --
 -- Algorithm:
 --   1. Empty ordered accumulator.
 --   2. Root → target: append every own_field, stamped with source
---      + depth + inherited + overridden_by=[]. Skip a key already
---      accumulated (duplicates are trigger-prevented, but never throw).
+--      + depth + inherited + overridden_by=[]. Skip a field whose key is
+--      missing, empty or not a string, and a key already accumulated
+--      (duplicates are trigger-prevented, but never throw).
 --   3. Root → target again: apply each ancestor's overrides to the
---      matching accumulated field. Only label/required/options/
---      default/help_text/position are patchable; append the patching
---      category id to overridden_by.
---   4. Sort by (depth DESC, position ASC, label ASC).
---   5. Return a JSONB array of EffectiveField.
+--      matching accumulated field, skipping any patch that is not an
+--      object. Only label/required/options/default/help_text/position
+--      are patchable; append the patching category id to overridden_by.
+--   4. Sort by depth DESC, position ASC, label ASC, key ASC. A position
+--      is a number or a numeric string (try_numeric's rule); anything
+--      else counts as 0. Labels and keys compare by code point, so every
+--      implementation orders ties identically.
+--   5. Return the fields as an array of EffectiveField.
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.get_effective_schema(p_category_id UUID)
 RETURNS JSONB
@@ -90,7 +181,7 @@ BEGIN
     FOR fld IN SELECT value FROM jsonb_array_elements(anc.own_fields)
     LOOP
       k := fld->>'key';
-      IF k IS NULL THEN CONTINUE; END IF;
+      IF jsonb_typeof(fld->'key') IS DISTINCT FROM 'string' OR k = '' THEN CONTINUE; END IF;
       IF k = ANY(seen) THEN CONTINUE; END IF;   -- duplicate: skip, never throw
       seen := array_append(seen, k);
       acc := acc || jsonb_build_array(
@@ -115,6 +206,9 @@ BEGIN
     END IF;
     FOR o_key, o_patch IN SELECT key, value FROM jsonb_each(anc.overrides)
     LOOP
+      -- jsonb_each() below raises on anything but an object, which used to
+      -- take the whole resolver down over one malformed patch.
+      CONTINUE WHEN jsonb_typeof(o_patch) <> 'object';
       FOR idx IN 0 .. jsonb_array_length(acc) - 1
       LOOP
         cur := acc->idx;
@@ -137,11 +231,16 @@ BEGIN
     END LOOP;
   END LOOP;
 
-  -- ── Pass 3: sort (depth DESC, position ASC, label ASC) ─────
+  -- ── Pass 3: sort (depth, position, label, key) ─────────────
+  -- try_numeric, not ::numeric: a stray non-numeric position must sort
+  -- as 0, not abort the most-called function in the system. COLLATE "C"
+  -- orders by code point, matching the TypeScript mirror exactly, and the
+  -- key breaks any remaining tie so the order is total.
   SELECT COALESCE(
            jsonb_agg(e ORDER BY (e->>'depth')::int DESC,
-                                COALESCE((e->>'position')::numeric, 0) ASC,
-                                COALESCE(e->>'label', '') ASC),
+                                COALESCE(public.try_numeric(e->>'position'), 0) ASC,
+                                COALESCE(e->>'label', '') COLLATE "C" ASC,
+                                (e->>'key') COLLATE "C" ASC),
            '[]'::jsonb)
     INTO acc
   FROM jsonb_array_elements(acc) e;
@@ -396,7 +495,10 @@ BEGIN
         fkey, fkey, fkey, ''
       );
 
-    ELSIF fval IS NULL OR fval = '' THEN
+    -- A range may carry only an upper bound (value2); every other operator
+    -- needs `value`. Range used to fall into this CONTINUE too, so "at most
+    -- 15" with no minimum filtered nothing at all.
+    ELSIF fop <> 'range' AND (fval IS NULL OR fval = '') THEN
       CONTINUE;
 
     ELSIF fop = 'contains' THEN
@@ -408,8 +510,13 @@ BEGIN
       where_sql := where_sql || format(' AND i.data->>%L = %L', fkey, fval);
 
     ELSIF fop = 'bool' THEN
+      -- An unreadable filter value is ignored, like an unrecognised key; an
+      -- unreadable stored value simply does not match. The bare ::boolean
+      -- this replaces aborted the whole Items tab on one "maybe".
+      CONTINUE WHEN public.try_boolean(fval) IS NULL;
       where_sql := where_sql || format(
-        ' AND (i.data->>%L)::boolean = %L::boolean', fkey, fval
+        ' AND public.try_boolean(i.data->>%L) = %L::boolean',
+        fkey, public.try_boolean(fval)::text
       );
 
     ELSIF fop = 'in' THEN
@@ -419,18 +526,21 @@ BEGIN
       );
 
     ELSIF fop = 'range' THEN
-      -- Guard the cast: a non-numeric stray value would abort the query.
-      where_sql := where_sql || format(
-        ' AND (i.data->>%L) ~ %L', fkey, '^-?[0-9]+(\.[0-9]+)?$'
-      );
-      IF fval IS NOT NULL AND fval <> '' THEN
+      -- try_numeric on both sides. It used to be a regex check followed by
+      -- a ::numeric cast in the same AND chain — not a guard at all, since
+      -- Postgres may evaluate the cast first. A bound that is not a number
+      -- is ignored; a range with no usable bound is ignored entirely.
+      CONTINUE WHEN public.try_numeric(fval) IS NULL AND public.try_numeric(fval2) IS NULL;
+      IF public.try_numeric(fval) IS NOT NULL THEN
         where_sql := where_sql || format(
-          ' AND (i.data->>%L)::numeric >= %L::numeric', fkey, fval
+          ' AND public.try_numeric(i.data->>%L) >= %L::numeric',
+          fkey, public.try_numeric(fval)::text
         );
       END IF;
-      IF fval2 IS NOT NULL AND fval2 <> '' THEN
+      IF public.try_numeric(fval2) IS NOT NULL THEN
         where_sql := where_sql || format(
-          ' AND (i.data->>%L)::numeric <= %L::numeric', fkey, fval2
+          ' AND public.try_numeric(i.data->>%L) <= %L::numeric',
+          fkey, public.try_numeric(fval2)::text
         );
       END IF;
     END IF;
@@ -478,22 +588,15 @@ BEGIN
   ELSIF p_sort_key !~ key_re THEN
     order_sql := 'i.created_at DESC';
   ELSE
-    -- The cast is what makes 8 sort before 16, and 2024-02 before
-    -- 2024-10. NULLIF+regex keeps a stray non-numeric value from
-    -- aborting the whole query.
+    -- The typed read is what makes 8 sort before 16, and 2024-02 before
+    -- 2024-10. The try_* helpers turn a stray unreadable value into a
+    -- NULL, which sorts last, instead of aborting the whole query. (The
+    -- date sort used to admit "2024-02-30" through its regex and then
+    -- fail on the cast.)
     cast_expr := CASE p_sort_type
-      WHEN 'number' THEN format(
-        '(CASE WHEN i.data->>%L ~ %L THEN (i.data->>%L)::numeric END)',
-        p_sort_key, '^-?[0-9]+(\.[0-9]+)?$', p_sort_key
-      )
-      WHEN 'date' THEN format(
-        '(CASE WHEN i.data->>%L ~ %L THEN (i.data->>%L)::date END)',
-        p_sort_key, '^\d{4}-\d{2}-\d{2}', p_sort_key
-      )
-      WHEN 'boolean' THEN format(
-        '(CASE WHEN i.data->>%L IN (%L,%L) THEN (i.data->>%L)::boolean END)',
-        p_sort_key, 'true', 'false', p_sort_key
-      )
+      WHEN 'number'  THEN format('public.try_numeric(i.data->>%L)', p_sort_key)
+      WHEN 'date'    THEN format('public.try_date(i.data->>%L)', p_sort_key)
+      WHEN 'boolean' THEN format('public.try_boolean(i.data->>%L)', p_sort_key)
       ELSE format('lower(i.data->>%L)', p_sort_key)
     END;
     order_sql := format('%s %s NULLS LAST, i.created_at DESC', cast_expr, dir);

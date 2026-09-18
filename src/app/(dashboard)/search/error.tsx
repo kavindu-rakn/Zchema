@@ -2,9 +2,12 @@
 
 import { PaneError } from "@/components/pane-error";
 
-export default function SearchError(props: {
+export default function SearchError({
+  error,
+  unstable_retry,
+}: {
   error: Error & { digest?: string };
-  reset: () => void;
+  unstable_retry: () => void;
 }) {
-  return <PaneError {...props} what="these results" />;
+  return <PaneError error={error} retry={unstable_retry} what="these results" />;
 }
