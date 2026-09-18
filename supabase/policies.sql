@@ -44,6 +44,12 @@ AS $$
   SELECT role FROM public.profiles WHERE id = auth.uid();
 $$;
 
+-- Every policy that calls this is `TO authenticated`, so only that role
+-- needs EXECUTE. anon had it through the default PUBLIC grant, exposing
+-- a DEFINER function at /rest/v1/rpc/get_user_role to signed-out callers.
+REVOKE EXECUTE ON FUNCTION public.get_user_role() FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.get_user_role() TO authenticated;
+
 
 -- ============================================================
 -- 3. Table grants
@@ -76,7 +82,9 @@ REVOKE ALL ON public.profiles, public.blueprints, public.categories,
   FROM anon, authenticated;
 
 -- Zchema requires a login: the anonymous role gets nothing back.
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.profiles   TO authenticated;
+-- profiles: no INSERT/DELETE for clients — see §4. Rows are created by
+-- handle_new_user() and removed by the auth.users cascade, nowhere else.
+GRANT SELECT, UPDATE                  ON public.profiles   TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.blueprints TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.categories TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.attributes TO authenticated;
@@ -89,12 +97,28 @@ GRANT SELECT, INSERT                  ON public.schema_versions TO authenticated
 -- 4. PROFILES
 -- ------------------------------------------------------------
 -- SELECT : own row; all rows for SCHEMA_ADMIN
--- IUD    : own row; any row for SCHEMA_ADMIN
+-- UPDATE : own row; any row for SCHEMA_ADMIN
+-- INSERT : nobody.   DELETE : nobody.
 --
 -- NOTE: a user may UPDATE their own row, which nominally includes
 -- `role`. Privilege escalation is blocked by the protect_role_update()
 -- trigger (schema.sql §10), which raises unless the caller is a
 -- SCHEMA_ADMIN. Policy + trigger together, not policy alone.
+--
+-- There are deliberately NO INSERT or DELETE policies, and §3 grants
+-- neither privilege to `authenticated`. This closes a full escalation:
+-- a VIEWER could DELETE their own profile row and re-INSERT it with
+-- role 'SCHEMA_ADMIN', because the role trigger fired only on UPDATE.
+-- Since requireSchemaAdmin() and every policy below read this table,
+-- that handed out the whole application to anyone who could sign up --
+-- and it was reachable straight from PostgREST with the public anon
+-- key, so "the UI doesn't do that" was never a mitigation.
+--
+-- Rows are created solely by handle_new_user() (SECURITY DEFINER,
+-- schema.sql §9) and removed solely by the ON DELETE CASCADE from
+-- auth.users. The DROP POLICY lines below are kept so that re-running
+-- this file strips the old insert/delete policies from an existing
+-- installation.
 -- ============================================================
 DROP POLICY IF EXISTS profiles_select_own    ON public.profiles;
 DROP POLICY IF EXISTS profiles_select_admin  ON public.profiles;
@@ -112,22 +136,12 @@ CREATE POLICY profiles_select_own   ON public.profiles FOR SELECT TO authenticat
 CREATE POLICY profiles_select_admin ON public.profiles FOR SELECT TO authenticated
   USING (public.get_user_role() = 'SCHEMA_ADMIN');
 
-CREATE POLICY profiles_insert_own   ON public.profiles FOR INSERT TO authenticated
-  WITH CHECK (id = auth.uid());
-CREATE POLICY profiles_insert_admin ON public.profiles FOR INSERT TO authenticated
-  WITH CHECK (public.get_user_role() = 'SCHEMA_ADMIN');
-
 CREATE POLICY profiles_update_own   ON public.profiles FOR UPDATE TO authenticated
   USING (id = auth.uid())
   WITH CHECK (id = auth.uid());
 CREATE POLICY profiles_update_admin ON public.profiles FOR UPDATE TO authenticated
   USING (public.get_user_role() = 'SCHEMA_ADMIN')
   WITH CHECK (public.get_user_role() = 'SCHEMA_ADMIN');
-
-CREATE POLICY profiles_delete_own   ON public.profiles FOR DELETE TO authenticated
-  USING (id = auth.uid());
-CREATE POLICY profiles_delete_admin ON public.profiles FOR DELETE TO authenticated
-  USING (public.get_user_role() = 'SCHEMA_ADMIN');
 
 
 -- ============================================================

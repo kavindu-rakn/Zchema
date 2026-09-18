@@ -14,6 +14,14 @@ import { requireDataEditor } from "@/lib/auth";
 import { actionError } from "@/lib/action-result";
 import type { ActionResult, EffectiveField, SchemaField } from "@/lib/types";
 
+// Mirrors MAX_ROWS in components/import/source-step.tsx, which stops the
+// browser choking on a huge paste. That one is an affordance; this one is
+// the boundary. A Server Action is a public POST endpoint, so the wizard
+// refusing to submit 200k rows says nothing about what can be posted —
+// and import_items() loops every row with a nested per-key loop, so an
+// uncapped import is a cheap way to pin the database.
+const MAX_IMPORT_ROWS = 10_000;
+
 export interface ImportOutcome {
   category_id: string;
   created: boolean;
@@ -39,6 +47,12 @@ export async function runImport(input: {
 
     if (input.rows.length === 0) {
       return { ok: false, error: "There are no rows to import." };
+    }
+    if (input.rows.length > MAX_IMPORT_ROWS) {
+      return {
+        ok: false,
+        error: `An import is limited to ${MAX_IMPORT_ROWS.toLocaleString()} rows at a time — this one has ${input.rows.length.toLocaleString()}. Split the file and run it in batches.`,
+      };
     }
 
     const supabase = await createClient();

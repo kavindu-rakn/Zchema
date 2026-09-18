@@ -202,7 +202,7 @@ BEGIN
   END;
 
   IF setup_err IS NOT NULL THEN
-    FOR i IN 9..16 LOOP
+    FOR i IN 9..19 LOOP
       INSERT INTO _p_test_results VALUES
         (i, 'Behavioural probe #' || i, 'SKIP', 'test-user setup failed: ' || setup_err);
     END LOOP;
@@ -259,6 +259,40 @@ BEGIN
     format('UPDATE public.schema_versions SET version = 99 WHERE id = %L', ver_id));
   INSERT INTO _p_test_results VALUES
     (16, 'SCHEMA_ADMIN cannot UPDATE schema_versions (append-only)',
+     CASE WHEN r LIKE 'DENIED%' OR r = 'ALLOWED:0' THEN 'PASS' ELSE 'FAIL' END, r);
+
+  -- 17–19. The self-promotion escalation (fixed 2026-09-09). The role guard
+  -- reads profiles.role, so a user who can rewrite their own row owns the
+  -- app. It was reachable in two PostgREST calls: DELETE your profile, then
+  -- re-INSERT it as SCHEMA_ADMIN — the role trigger fired on UPDATE only.
+  -- The setup block above is the positive control: it changes roles as the
+  -- table owner with no JWT, which must keep working (it is the documented
+  -- way to promote someone from the SQL editor).
+
+  -- 17. Step one of the chain: a VIEWER cannot delete their own profile
+  r := pg_temp._rls_probe(viewer_id,
+    format('DELETE FROM public.profiles WHERE id = %L', viewer_id));
+  INSERT INTO _p_test_results VALUES
+    (17, 'VIEWER cannot DELETE their own profile (escalation step 1)',
+     CASE WHEN r LIKE 'DENIED%' OR r = 'ALLOWED:0' THEN 'PASS' ELSE 'FAIL' END, r);
+
+  -- 18. Step two: a VIEWER cannot insert a SCHEMA_ADMIN profile. Only a
+  -- privilege or role-guard refusal counts: a unique-key violation would
+  -- mean the INSERT got through every guard and merely collided with the
+  -- existing row, which is a FAIL that looks like a PASS.
+  r := pg_temp._rls_probe(viewer_id,
+    format('INSERT INTO public.profiles (id, email, role) VALUES (%L, %L, %L)',
+           viewer_id, 'rlstest-viewer@zchema.test', 'SCHEMA_ADMIN'));
+  INSERT INTO _p_test_results VALUES
+    (18, 'VIEWER cannot INSERT a profile as SCHEMA_ADMIN (escalation step 2)',
+     CASE WHEN r LIKE 'DENIED: permission denied%' OR r LIKE 'DENIED: Only SCHEMA_ADMIN%'
+          THEN 'PASS' ELSE 'FAIL' END, r);
+
+  -- 19. The direct route: a VIEWER cannot UPDATE their own role
+  r := pg_temp._rls_probe(viewer_id,
+    format('UPDATE public.profiles SET role = %L WHERE id = %L', 'SCHEMA_ADMIN', viewer_id));
+  INSERT INTO _p_test_results VALUES
+    (19, 'VIEWER cannot promote themselves via UPDATE',
      CASE WHEN r LIKE 'DENIED%' OR r = 'ALLOWED:0' THEN 'PASS' ELSE 'FAIL' END, r);
 
   -- ── cleanup ───────────────────────────────────────────────

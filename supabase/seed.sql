@@ -99,12 +99,16 @@ SELECT 'd0000000-0000-0000-0000-000000000004', jsonb_build_object(
 -- ============================================================
 -- 4. Assigning roles to real users
 -- ------------------------------------------------------------
--- handle_new_user() auto-creates a profile on signup and maps the two
--- seed emails automatically:
---     admin@zchema.com  → SCHEMA_ADMIN
---     editor@zchema.com → DATA_EDITOR
--- Everyone else defaults to VIEWER. To promote another account after
--- it signs up, run (as a SCHEMA_ADMIN or from this editor):
+-- handle_new_user() auto-creates a profile on signup. The FIRST account
+-- on an empty instance becomes SCHEMA_ADMIN so a fresh deployment is
+-- usable immediately; everyone after it defaults to VIEWER and is
+-- promoted from Settings → Users.
+--
+-- (This used to key off two hardcoded addresses, admin@zchema.com and
+-- editor@zchema.com. That granted admin to whoever registered an address
+-- nobody owns, and re-opened on every rebuild — so it is gone.)
+--
+-- To promote an account by hand instead, run from this editor:
 --
 --   UPDATE public.profiles SET role = 'SCHEMA_ADMIN' WHERE email = 'you@example.com';
 --   UPDATE public.profiles SET role = 'DATA_EDITOR'  WHERE email = 'them@example.com';
