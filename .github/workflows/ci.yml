@@ -1,0 +1,35 @@
+# Typecheck, lint and test every push to master and every pull request.
+#
+# `npm test` covers more than the unit tests: it also runs the migration
+# drift check (supabase/migrations.test.ts), the shared resolver cases,
+# and the freshness check on the generated SQL resolver test. The SQL
+# suites themselves need a live database, so they are run by hand (see
+# supabase/tests/). Vercel builds every push, so there is no build step.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Node 24: the tests are TypeScript run directly by node --test.
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test

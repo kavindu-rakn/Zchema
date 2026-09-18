@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "test": "node --test \"src/**/*.test.ts\" \"supabase/**/*.test.ts\"",
     "gen:resolver-sql": "node supabase/tests/generate-resolver-sql.ts",
     "db:new": "npx --yes supabase@2.117.0 migration new",
