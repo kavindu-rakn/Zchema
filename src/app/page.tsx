@@ -1,6 +1,6 @@
-import { ArrowRight, Layers, FolderTree, Database } from "lucide-react";
+import { ArrowRight, FolderTree, History, ScanSearch } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image";
+import { LogoMark } from "@/components/brand/logo-mark";
 
 export default function Home() {
   return (
@@ -9,19 +9,21 @@ export default function Home() {
       <div className="flex flex-col items-center gap-4 text-center max-w-2xl">
         <div className="flex items-center gap-2 rounded-full border border-border/60 bg-secondary/50 px-4 py-1.5 text-xs font-medium text-muted-foreground">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-          Dynamic Catalog Engine
+          See what breaks before it breaks
         </div>
 
-        <Image src="/logo-nobg.png" alt="Zchema Logo" width={80} height={80} className="rounded-2xl shadow-xl border border-border/20 mt-2 mb-2" priority />
+        <div className="mt-2 mb-2 flex h-20 w-20 items-center justify-center rounded-2xl border border-border/20 shadow-xl">
+          <LogoMark className="h-12 w-12 text-primary" />
+        </div>
 
         <h1 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
           <span className="text-primary">Z</span>chema
         </h1>
 
         <p className="max-w-lg text-base text-muted-foreground leading-relaxed">
-          A schema management system for catalog data. Define fields on a
-          category, inherit them down the tree, and change your data model
-          against live records — all powered by JSONB.
+          Change your data model against live records. Before a schema change
+          is applied, Zchema shows exactly which categories, items and values
+          it touches — then applies it in one transaction you can roll back.
         </p>
 
         <div className="flex items-center gap-3 mt-4">
@@ -44,19 +46,19 @@ export default function Home() {
       {/* ── Feature Cards ── */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 max-w-3xl w-full">
         <FeatureCard
-          icon={<Layers className="h-5 w-5 text-primary" />}
-          title="Composable Schema"
-          description="Define fields on any category with string, number, boolean, date, select and more."
+          icon={<ScanSearch className="h-5 w-5 text-primary" />}
+          title="Impact before apply"
+          description="Every schema change shows its blast radius first: which categories, how many items, and which values won't survive."
         />
         <FeatureCard
           icon={<FolderTree className="h-5 w-5 text-primary" />}
-          title="Category Hierarchy"
-          description="Child categories inherit their parent's fields and add their own on top."
+          title="Schemas that inherit"
+          description="Fields live on the category and flow down the tree. Children add and override; they never silently lose a field."
         />
         <FeatureCard
-          icon={<Database className="h-5 w-5 text-primary" />}
-          title="JSONB Catalog"
-          description="Store and query dynamic item data with GIN-indexed JSONB for blazing performance."
+          icon={<History className="h-5 w-5 text-primary" />}
+          title="Nothing silently lost"
+          description="Values from a removed field are kept, not deleted, and every change is versioned so you can roll it back."
         />
       </div>
 
