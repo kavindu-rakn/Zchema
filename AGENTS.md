@@ -44,17 +44,37 @@ value silently.
 deletion all route through the same dialog. If you are adding a fourth destructive operation, it
 routes through it too — do not write a second explanation of "this will break things".
 
-**`get_effective_schema()` (SQL) and `resolveEffectiveSchema()` (TS) must agree.** The algorithm
-comment block is duplicated verbatim in `supabase/functions.sql` and `src/lib/schema.ts`. Change
-one, change the other in the same commit. `diffSchemas()` has the same contract against
-`analyze_schema_change`.
+**The effective schema is resolved in three places, and all three must agree.**
+
+| Copy | Where | Fed by |
+|---|---|---|
+| `get_effective_schema()` | `supabase/functions.sql` | saved categories |
+| `resolve_schema_preview()` | `supabase/impact.sql` | the proposed change, in the impact dialog |
+| `resolveEffectiveSchema()` | `src/lib/schema.ts` | unsaved draft state in the editor |
+
+The algorithm comment block is identical in all three. Change one, change all three in the same
+commit — the one people forget is `resolve_schema_preview()`, and it is the copy that tells the
+user what their save will do. One fixture holds them together,
+`supabase/tests/fixtures/resolver-cases.json`: `npm test` asserts it against the TS copy and
+fails if the three comment blocks drift, and `resolver_differential_test.sql` asserts it against
+both SQL copies. That file is generated — edit the fixture, run `npm run gen:resolver-sql`, and
+run the result in the SQL editor. Add the case to the fixture before changing the behaviour.
+
+`diffSchemas()` is a display diff, not impact analysis. It names which fields and properties
+differ, for the history timeline; its severity is always `"safe"` and it does **not** agree with
+`analyze_schema_change`. Anything that decides whether a change may go ahead asks the SQL.
 
 **Every mutating server action re-checks the role.** A Server Action is a public POST endpoint.
 RLS guards the tables, but `requireSchemaAdmin()` / `requireDataEditor()` is not optional —
-hiding a button is a UI affordance, not a boundary.
+hiding a button is a UI affordance, not a boundary. In SQL, `require_schema_admin()` /
+`require_data_editor()` let a caller with no `auth.uid()` through only when it is a direct
+database session (the SQL editor, a migration) — never as `anon` or `authenticated`. Keep that
+shape; a bare `auth.uid() IS NOT NULL AND …` guard is skipped by anyone without a JWT.
 
-**Guard every numeric cast on JSONB.** `(data->>'price')::numeric` aborts the whole statement the
-moment one row anywhere holds `"call for pricing"`. Use `try_numeric()`.
+**Guard every cast on JSONB.** `(data->>'price')::numeric` aborts the whole statement the moment
+one row anywhere holds `"call for pricing"`. Use `try_numeric()`, `try_boolean()` and
+`try_date()` (`functions.sql` §1b–1c), which return NULL instead of raising. A regex check beside
+the cast in the same `WHERE` is not a guard: Postgres does not promise to evaluate it first.
 
 **Validate keys before interpolating them into dynamic SQL.** `^[a-z][a-z0-9_]*$`, and values
 through `%L`. An unrecognised key is ignored, not run.
@@ -67,12 +87,25 @@ through `%L`. An unrecognised key is ignored, not run.
 ## Working conventions
 
 - **Do not commit.** No `git commit`, `git add`, `git push` or `gh pr create` unless asked.
-- **Tests**: `npm test` runs `node --test` over `src/**/*.test.ts` — no framework, Node 24 runs
-  TypeScript directly. SQL suites in `supabase/tests/` are run by hand in the Supabase SQL
-  editor and must end in a result-set `SELECT` of PASS/FAIL rows.
+- **Tests**: `npm test` runs `node --test` over `src/**/*.test.ts` and `supabase/**/*.test.ts` —
+  no framework, Node 24 (`.nvmrc`) runs TypeScript directly. CI runs `npm run typecheck`,
+  `npm run lint` and `npm test` on every pull request; keep all three at zero. SQL suites in
+  `supabase/tests/` need a live database, so they are run by hand in the Supabase SQL editor and
+  must end in a result-set `SELECT` of PASS/FAIL rows.
+- **Database changes are migrations.** The nine `supabase/*.sql` feature files are the readable
+  source; `supabase/migrations/` is what a database actually runs, and
+  `supabase_migrations.schema_migrations` records which have run. To change the database, edit
+  the feature file, run `npm run db:new -- <name>`, put the same change in the new migration,
+  then `npm run db:push`. Never edit a migration that has been applied anywhere — add another.
+  `supabase/migrations.test.ts` replays both and fails when they end in different states.
+- **Change a function with the full `CREATE OR REPLACE`**, never `ALTER FUNCTION` — the drift
+  test cannot see an ALTER. Adding a parameter creates an *overload*: drop the old signature
+  first, or every PostgREST call becomes ambiguous. The drift test fails on overloads.
+- **Feature files never destroy data.** No `DROP TABLE` and no `TRUNCATE` in them (the drift
+  test enforces it); tables are `CREATE … IF NOT EXISTS`. Tearing everything down is
+  `supabase/dev/reset.sql`, dev databases only.
 - **SQL load order**: `schema → functions → triggers → policies → impact → attributes → search →
-  import → onboarding`. Adding a parameter to an existing function creates an *overload* — drop
-  the old signature first, or every PostgREST call becomes ambiguous.
+  import → onboarding`. The baseline migration is these nine files concatenated in this order.
 - **Seed data changes.** Do not write a test assertion that depends on a specific seed row count
   unless the test builds its own sandbox and tears it down.
 

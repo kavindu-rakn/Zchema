@@ -183,9 +183,12 @@ export function buildCategoryTree(flat: CategoryNode[]): CategoryNode[] {
 /**
  * Compare two resolved schemas and describe what changed.
  *
- * NOTE (Phase 1): severity is a `"safe"` placeholder and
- * `affected_item_count` is 0 — this function is pure and has no access
- * to item data. Phase 5 assigns real severities and counts.
+ * A display diff, not impact analysis: it says WHICH fields and
+ * properties differ, and the history timeline uses it to mark rows.
+ * It is pure and never sees item data, so severity is always `"safe"`
+ * and `affected_item_count` always 0 — it does not agree with
+ * analyze_schema_change and is not meant to. Anything that decides
+ * whether a change may go ahead must ask the SQL.
  */
 export function diffSchemas(
   before: EffectiveField[],

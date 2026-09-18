@@ -13,30 +13,45 @@ inherited field key). Its **effective schema** is computed by folding the ancest
 ### The algorithm
 
 `get_effective_schema(category_id)` in `supabase/functions.sql`, mirrored exactly by
-`resolveEffectiveSchema(chain)` in `src/lib/schema.ts`:
+`resolve_schema_preview()` in `supabase/impact.sql` and `resolveEffectiveSchema(chain)` in
+`src/lib/schema.ts`:
 
 1. Start with an empty ordered accumulator.
 2. **Pass 1 — root → target.** For each ancestor in order, append every entry of its
    `own_fields`, stamped with `source_category_id`, `source_category_name`, `depth` (distance
-   from the target), `inherited = depth > 0`, and `overridden_by: []`. If a key is already in
-   the accumulator, **skip the duplicate and continue** — the uniqueness trigger makes this
-   unreachable, but the resolver must never throw.
+   from the target), `inherited = depth > 0`, and `overridden_by: []`. Skip a field whose key is
+   missing, empty or not a string. If a key is already in the accumulator, **skip the duplicate
+   and continue** — the uniqueness trigger makes this unreachable, but the resolver must never
+   throw.
 3. **Pass 2 — root → target again.** For each ancestor's `overrides` object, patch any
-   accumulated field whose key matches. Only `label`, `required`, `options`, `default`,
-   `help_text` and `position` may be patched; any other key in the patch object is ignored.
-   Append the patching category's id to `overridden_by`.
-4. Sort by `(depth DESC, position ASC, label ASC)`, so inherited fields appear above own fields
-   and the order is stable.
+   accumulated field whose key matches, skipping any patch that is not an object. Only `label`,
+   `required`, `options`, `default`, `help_text` and `position` may be patched; any other key in
+   the patch object is ignored. Append the patching category's id to `overridden_by`.
+4. Sort by `(depth DESC, position ASC, label ASC, key ASC)`, so inherited fields appear above
+   own fields. A position is a number or a numeric string (`try_numeric`'s rule); anything else
+   counts as 0. Labels and keys compare by code point, so every implementation orders ties
+   identically.
 
 Two passes rather than one because an override may target a field defined by an ancestor
 *above* the overriding category, which is not yet in the accumulator during pass 1.
 
-### Why two implementations
+The skips in steps 2 and 3 matter more than they look. The TypeScript copy is fed unsaved draft
+state that no trigger has validated, so it must survive anything a user can type. And whatever
+it survives, the SQL copies must survive the same way, or the preview works and the save fails.
 
-The SQL is the authority. The TypeScript exists so the schema editor can render a live preview
-of an unsaved draft without a round trip per keystroke. **They must agree**: a divergence
-surfaces as a UI that lies about what saving will do. The algorithm comment block above is
-duplicated verbatim in both files; change one, change the other in the same commit.
+### Why three implementations
+
+The SQL is the authority. `resolve_schema_preview()` resolves a *proposed* category — one that
+is not saved yet — so the impact dialog can compare before and after. The TypeScript exists so
+the schema editor can render a live preview of an unsaved draft without a round trip per
+keystroke. **They must agree**: a divergence surfaces as a UI that lies about what saving will
+do.
+
+The algorithm comment block above is identical in all three files, and `src/lib/schema.test.ts`
+fails if it drifts. Behaviour is pinned by one shared fixture,
+`supabase/tests/fixtures/resolver-cases.json`: `npm test` asserts it against the TypeScript
+copy, and the generated `supabase/tests/resolver_differential_test.sql` asserts it against both
+SQL copies. Change the fixture first, then all three implementations, in the same commit.
 
 ### Uniqueness
 
@@ -169,8 +184,10 @@ RLS-protected; without elevation the profiles policies that call it would recurs
 
 **Server actions re-check anyway.** A Server Action is a public POST endpoint. Every mutation
 calls `requireSchemaAdmin()` or `requireDataEditor()` before touching anything. The SQL
-functions do the same via `require_schema_admin()` / `require_data_editor()`, which treat a NULL
-`auth.uid()` (SQL editor, service role) as trusted since it already bypasses RLS as table owner.
+functions do the same via `require_schema_admin()` / `require_data_editor()`. A NULL
+`auth.uid()` is trusted only when the session is not `anon` or `authenticated` — the SQL editor,
+the service role, a migration — since those already bypass RLS as table owner. A client with no
+JWT reaches PostgREST as `anon`, so it is refused rather than waved through.
 
 ---
 
@@ -187,9 +204,11 @@ expression are load-bearing:
   was deleted months ago, with nothing in the result explaining the match, is a bug that looks
   like magic. Search reflects the live schema.
 
-`try_numeric()` guards every numeric comparison, using a regex rather than a `BEGIN/EXCEPTION`
-block so the function stays inlinable and parallel-safe; an exception block would open a
-subtransaction per row.
+`try_numeric()`, `try_boolean()` and `try_date()` (`functions.sql` §1b–1c) guard every cast on
+item data — here, in the Items tab's filters and sorts, and in the resolver's `position` sort.
+Each yields NULL for a value it cannot read. They use a regex and `CASE` rather than a
+`BEGIN/EXCEPTION` block, so they stay plain `IMMUTABLE`, inlinable SQL and parallel-safe; an
+exception block would open a subtransaction per row.
 
 The **query DSL** (`src/lib/query-dsl.ts`) parses `brand:Sony price:>500 in:electronics
 missing:sku` into filters plus a scope. Its governing rule: an unparseable fragment becomes free
