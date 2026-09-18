@@ -48,7 +48,10 @@ export async function updateSession(request: NextRequest) {
     path === "/" ||
     path === "/login" ||
     path === "/signup" ||
+    path === "/forgot-password" ||
     path === "/auth/callback";
+  // /update-password is deliberately NOT public: it is only useful with
+  // the session /auth/callback creates from a reset link.
 
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
