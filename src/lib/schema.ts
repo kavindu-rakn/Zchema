@@ -32,19 +32,31 @@ export const OVERRIDABLE_KEYS = [
  *
  * @param chain Ancestors ROOT-FIRST, with the target category last —
  *              the same order `get_category_ancestors()` returns
- *              (`ORDER BY depth DESC`).
+ *              (`ORDER BY depth DESC`). Must be the complete, contiguous
+ *              root → target path: depth is derived from position here,
+ *              where SQL reads it from the recursive walk.
+ *
+ * One of THREE implementations that must agree: this one,
+ * get_effective_schema() in supabase/functions.sql, and
+ * resolve_schema_preview() in supabase/impact.sql. Keep the algorithm
+ * comments identical (a test checks); prove behaviour against the shared
+ * fixture, supabase/tests/fixtures/resolver-cases.json.
  *
  * Algorithm:
  *   1. Empty ordered accumulator.
  *   2. Root → target: append every own_field, stamped with source
- *      + depth + inherited + overridden_by=[]. Skip a key already
- *      accumulated (duplicates are trigger-prevented, but never throw).
+ *      + depth + inherited + overridden_by=[]. Skip a field whose key is
+ *      missing, empty or not a string, and a key already accumulated
+ *      (duplicates are trigger-prevented, but never throw).
  *   3. Root → target again: apply each ancestor's overrides to the
- *      matching accumulated field. Only label/required/options/
- *      default/help_text/position are patchable; append the patching
- *      category id to overridden_by.
- *   4. Sort by (depth DESC, position ASC, label ASC).
- *   5. Return an array of EffectiveField.
+ *      matching accumulated field, skipping any patch that is not an
+ *      object. Only label/required/options/default/help_text/position
+ *      are patchable; append the patching category id to overridden_by.
+ *   4. Sort by depth DESC, position ASC, label ASC, key ASC. A position
+ *      is a number or a numeric string (try_numeric's rule); anything
+ *      else counts as 0. Labels and keys compare by code point, so every
+ *      implementation orders ties identically.
+ *   5. Return the fields as an array of EffectiveField.
  */
 export function resolveEffectiveSchema(
   chain: Pick<Category, "id" | "name" | "own_fields" | "overrides">[]
@@ -60,8 +72,8 @@ export function resolveEffectiveSchema(
     const ownFields = Array.isArray(category.own_fields) ? category.own_fields : [];
 
     for (const field of ownFields) {
-      const key = field?.key;
-      if (!key) continue;
+      const key: unknown = field?.key;
+      if (typeof key !== "string" || key === "") continue;
       if (seen.has(key)) continue; // duplicate: skip, never throw
       seen.add(key);
       acc.push({
@@ -78,7 +90,7 @@ export function resolveEffectiveSchema(
   // 3. Root → target again: apply overrides to matching fields.
   for (const category of chain) {
     const overrides = category.overrides;
-    if (!overrides || typeof overrides !== "object") continue;
+    if (!overrides || typeof overrides !== "object" || Array.isArray(overrides)) continue;
 
     for (const [key, patch] of Object.entries(overrides)) {
       if (!patch || typeof patch !== "object" || Array.isArray(patch)) continue;
@@ -96,14 +108,44 @@ export function resolveEffectiveSchema(
     }
   }
 
-  // 4. Sort by (depth DESC, position ASC, label ASC).
-  return acc.sort((a, b) => {
-    if (a.depth !== b.depth) return b.depth - a.depth;
-    const posA = typeof a.position === "number" ? a.position : 0;
-    const posB = typeof b.position === "number" ? b.position : 0;
-    if (posA !== posB) return posA - posB;
-    return (a.label ?? "").localeCompare(b.label ?? "");
-  });
+  // 4. Sort by depth DESC, position ASC, label ASC, key ASC.
+  return acc.sort(
+    (a, b) =>
+      b.depth - a.depth ||
+      sortPosition(a.position) - sortPosition(b.position) ||
+      compareCodePoints(labelText(a.label), labelText(b.label)) ||
+      compareCodePoints(a.key, b.key)
+  );
+}
+
+/** try_numeric's rule, so SQL and TS read a position the same way. */
+const NUMERIC_TEXT = /^\s*-?\d+(\.\d+)?([eE][-+]?\d+)?\s*$/;
+
+function sortPosition(position: unknown): number {
+  if (typeof position === "number" && Number.isFinite(position)) return position;
+  if (typeof position === "string" && NUMERIC_TEXT.test(position)) return Number(position);
+  return 0;
+}
+
+/** What SQL's `COALESCE(e->>'label', '')` yields for the same value. */
+function labelText(label: unknown): string {
+  if (label === null || label === undefined) return "";
+  return typeof label === "string" ? label : JSON.stringify(label);
+}
+
+/**
+ * Order by Unicode code point — what SQL's COLLATE "C" does with UTF-8.
+ * Plain `<` compares UTF-16 code units, which disagrees for characters
+ * outside the Basic Multilingual Plane; localeCompare follows a locale.
+ */
+function compareCodePoints(a: string, b: string): number {
+  const left = Array.from(a);
+  const right = Array.from(b);
+  for (let i = 0; i < Math.min(left.length, right.length); i++) {
+    const diff = left[i].codePointAt(0)! - right[i].codePointAt(0)!;
+    if (diff !== 0) return diff;
+  }
+  return left.length - right.length;
 }
 
 /**

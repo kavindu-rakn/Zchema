@@ -50,33 +50,11 @@ CREATE INDEX IF NOT EXISTS idx_items_search
 
 
 -- ============================================================
--- 2. try_numeric(text) → NUMERIC or NULL
+-- 2. try_numeric(text) — now defined in functions.sql §1b
 -- ------------------------------------------------------------
--- THE CLASSIC JSONB FOOTGUN.
---
--- `WHERE (data->>'price')::numeric > 500` does not fail on the rows it
--- rejects — it fails on the rows it never meant to touch. One item in
--- one unrelated category holding "call for pricing" in a key that
--- happens to be spelled `price` aborts the entire query with
--- "invalid input syntax for type numeric". Across a catalog-wide
--- search that is not an edge case, it is Tuesday.
---
--- Guarding with a regex rather than a BEGIN/EXCEPTION block keeps the
--- function inlinable and parallel-safe; an exception block would force
--- a subtransaction per row.
+-- It moved to the first functions file so everything loaded after it,
+-- including get_effective_schema(), can rely on it being there.
 -- ============================================================
-CREATE OR REPLACE FUNCTION public.try_numeric(p_value TEXT)
-RETURNS NUMERIC
-LANGUAGE sql
-IMMUTABLE
-PARALLEL SAFE
-SET search_path = ''
-AS $$
-  SELECT CASE
-    WHEN p_value ~ '^\s*-?\d+(\.\d+)?([eE][-+]?\d+)?\s*$'
-    THEN btrim(p_value)::numeric
-  END;
-$$;
 
 
 -- ============================================================

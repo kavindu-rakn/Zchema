@@ -77,8 +77,27 @@ $$;
 -- This is what lets the impact dialog answer "what would happen if I
 -- saved this?" without writing anything first.
 --
--- Keep the algorithm identical to get_effective_schema — if that one
--- changes, change this in the same commit.
+-- One of THREE implementations that must agree: this one,
+-- get_effective_schema() in functions.sql, and resolveEffectiveSchema()
+-- in src/lib/schema.ts. Change all three in the same commit; keep the
+-- algorithm comments identical (a test checks); prove behaviour against
+-- supabase/tests/fixtures/resolver-cases.json.
+--
+-- Algorithm:
+--   1. Empty ordered accumulator.
+--   2. Root → target: append every own_field, stamped with source
+--      + depth + inherited + overridden_by=[]. Skip a field whose key is
+--      missing, empty or not a string, and a key already accumulated
+--      (duplicates are trigger-prevented, but never throw).
+--   3. Root → target again: apply each ancestor's overrides to the
+--      matching accumulated field, skipping any patch that is not an
+--      object. Only label/required/options/default/help_text/position
+--      are patchable; append the patching category id to overridden_by.
+--   4. Sort by depth DESC, position ASC, label ASC, key ASC. A position
+--      is a number or a numeric string (try_numeric's rule); anything
+--      else counts as 0. Labels and keys compare by code point, so every
+--      implementation orders ties identically.
+--   5. Return the fields as an array of EffectiveField.
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.resolve_schema_preview(
   p_category_id    UUID,
@@ -121,7 +140,7 @@ BEGIN
     FOR fld IN SELECT value FROM jsonb_array_elements(eff_own)
     LOOP
       k := fld->>'key';
-      IF k IS NULL THEN CONTINUE; END IF;
+      IF jsonb_typeof(fld->'key') IS DISTINCT FROM 'string' OR k = '' THEN CONTINUE; END IF;
       IF k = ANY(seen) THEN CONTINUE; END IF;
       seen := array_append(seen, k);
       acc := acc || jsonb_build_array(
@@ -171,11 +190,12 @@ BEGIN
     END LOOP;
   END LOOP;
 
-  -- Pass 3: sort (depth DESC, position ASC, label ASC).
+  -- Pass 3: sort (depth, position, label, key) — as get_effective_schema.
   SELECT COALESCE(
            jsonb_agg(e ORDER BY (e->>'depth')::int DESC,
-                                COALESCE((e->>'position')::numeric, 0) ASC,
-                                COALESCE(e->>'label', '') ASC),
+                                COALESCE(public.try_numeric(e->>'position'), 0) ASC,
+                                COALESCE(e->>'label', '') COLLATE "C" ASC,
+                                (e->>'key') COLLATE "C" ASC),
            '[]'::jsonb)
     INTO acc
   FROM jsonb_array_elements(acc) e;
