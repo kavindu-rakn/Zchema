@@ -12,11 +12,16 @@ import { Button } from "@/components/ui/button";
 
 export function PaneError({
   error,
-  reset,
+  retry,
   what,
 }: {
   error: Error & { digest?: string };
-  reset: () => void;
+  /**
+   * Pass the boundary's `unstable_retry`, not `reset`. reset() re-renders
+   * without re-fetching, so a server-side failure — a flaky query, an
+   * expired token — just fails again; retry fetches afresh.
+   */
+  retry: () => void;
   /** What failed, named — "this category", "the search". */
   what: string;
 }) {
@@ -40,7 +45,7 @@ export function PaneError({
           <p className="font-mono text-xs text-muted-foreground/70">Reference: {error.digest}</p>
         )}
 
-        <Button onClick={reset} variant="outline" size="sm" className="mt-1">
+        <Button onClick={retry} variant="outline" size="sm" className="mt-1">
           <RefreshCcw className="mr-1.5 h-3.5 w-3.5" />
           Try again
         </Button>

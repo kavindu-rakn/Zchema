@@ -85,6 +85,22 @@ export async function getDashboardData(): Promise<DashboardData> {
       supabase.rpc("count_categories_with_orphans"),
     ]);
 
+  // Every query here feeds a verdict, and the empty verdict is "nothing
+  // needs your attention". Reading `.data ?? []` past an error turned a
+  // failed check into a confident all-clear — the worst failure a
+  // data-integrity dashboard can have. Fail loudly instead, as the rest
+  // of lib/data does; the dashboard's error boundary takes it from there.
+  const checks = [
+    ["schema changes", changesRes],
+    ["recent schema versions", recentVersionsRes],
+    ["recent items", recentItemsRes],
+    ["items missing required values", missingRes],
+    ["categories with orphaned data", orphanRes],
+  ] as const;
+  for (const [what, result] of checks) {
+    if (result.error) throw new Error(`Could not load ${what}: ${result.error.message}`);
+  }
+
   const byId = new Map(tree.map((node) => [node.id, node]));
   const nameOf = (id: string) => byId.get(id)?.name ?? "Unknown category";
 

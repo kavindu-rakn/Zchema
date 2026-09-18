@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/button";
 
 export default function DashboardError({
   error,
-  reset,
+  unstable_retry,
 }: {
   error: Error & { digest?: string };
-  reset: () => void;
+  /** Re-fetches; reset() would re-render the same failed payload. */
+  unstable_retry: () => void;
 }) {
   return (
     <div className="flex min-h-[60vh] items-center justify-center p-6">
@@ -33,11 +34,13 @@ export default function DashboardError({
         )}
 
         <div className="mt-2 flex flex-wrap justify-center gap-2">
-          <Button onClick={reset} variant="outline">
+          <Button onClick={unstable_retry} variant="outline">
             <RefreshCcw className="mr-2 h-4 w-4" />
             Try again
           </Button>
-          <Button variant="ghost" render={<Link href="/dashboard" />}>
+          {/* Rendered as a link, so it must not claim native button
+              semantics — Base UI warns, and assistive tech is misled. */}
+          <Button variant="ghost" nativeButton={false} render={<Link href="/dashboard" />}>
             Back to dashboard
           </Button>
         </div>

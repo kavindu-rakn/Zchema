@@ -6,9 +6,12 @@
 
 import { PaneError } from "@/components/pane-error";
 
-export default function CategoryDetailError(props: {
+export default function CategoryDetailError({
+  error,
+  unstable_retry,
+}: {
   error: Error & { digest?: string };
-  reset: () => void;
+  unstable_retry: () => void;
 }) {
-  return <PaneError {...props} what="this category" />;
+  return <PaneError error={error} retry={unstable_retry} what="this category" />;
 }
