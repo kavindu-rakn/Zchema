@@ -87,10 +87,19 @@ is asked about rather than guessed.
 
 ## Screenshots
 
-> **Not yet captured.** The two worth having are the **Schema tab on `Gaming Laptops`**, showing
-> seven inherited fields from two ancestors above two of its own, and the **impact dialog**
-> mid-change with a destructive row expanded. [`docs/DEMO.md`](docs/DEMO.md) walks to both in
-> under two minutes.
+**The impact dialog.** Removing `has_rgb` from `Gaming Laptops` before it is applied: 15 items
+hold a value, and none of it is deleted unless you choose to — the default moves it to orphaned
+data, where it can be restored.
+
+![Impact dialog: removing has_rgb from Gaming Laptops, flagged destructive, with the move-to-orphaned-data remediation selected](docs/screenshots/impact-dialog.png)
+
+**The Schema tab.** `Gaming Laptops` inherits seven fields from two ancestors and defines two of
+its own. One inherited field, `warranty_months`, is overridden here; the preview on the right is
+the form a Data Editor will see.
+
+![Schema tab for Gaming Laptops: seven inherited fields from Electronics and Laptops, one override, and a live form preview](docs/screenshots/schema-tab.png)
+
+[`docs/DEMO.md`](docs/DEMO.md) walks to both in under two minutes.
 
 ---
 
