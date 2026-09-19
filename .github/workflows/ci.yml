@@ -29,6 +29,8 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
+      # "Missing: … from lock file" here means package-lock.json was written
+      # by an older npm than this runner's — see AGENTS.md.
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
