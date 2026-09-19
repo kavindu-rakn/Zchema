@@ -92,6 +92,11 @@ through `%L`. An unrecognised key is ignored, not run.
   `npm run lint` and `npm test` on every pull request; keep all three at zero. SQL suites in
   `supabase/tests/` need a live database, so they are run by hand in the Supabase SQL editor and
   must end in a result-set `SELECT` of PASS/FAIL rows.
+- **Write `package-lock.json` with the npm CI uses** — CI takes the newest Node 24 (`.nvmrc`), so
+  that was npm 11.19 on 2026-09-18; the job log prints it. npm 11.6 leaves the
+  optional wasm peers `@emnapi/core` and `@emnapi/runtime` out of the lock, and even strips them
+  from a lock that has them; CI's `npm ci` then fails with `Missing: @emnapi/… from lock file`.
+  Repair it with `npx npm@11.19.0 install --package-lock-only`.
 - **Database changes are migrations.** The nine `supabase/*.sql` feature files are the readable
   source; `supabase/migrations/` is what a database actually runs, and
   `supabase_migrations.schema_migrations` records which have run. To change the database, edit
