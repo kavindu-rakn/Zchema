@@ -502,8 +502,13 @@ BEGIN
       CONTINUE;
 
     ELSIF fop = 'contains' THEN
+      -- LIKE metacharacters escaped, as search_items does: filtering for
+      -- "50%" means that string, not "anything containing 50".
       where_sql := where_sql || format(
-        ' AND i.data->>%L ILIKE %L', fkey, '%' || fval || '%'
+        ' AND i.data->>%L ILIKE %L ESCAPE %L',
+        fkey,
+        '%' || replace(replace(replace(fval, '\', '\\'), '%', '\%'), '_', '\_') || '%',
+        '\'
       );
 
     ELSIF fop = 'eq' THEN
@@ -581,12 +586,18 @@ BEGIN
   END IF;
 
   -- ── Sort ──────────────────────────────────────────────────
+  -- Every order ends in i.id. Paging with LIMIT/OFFSET is only correct
+  -- over a TOTAL order, and ties are common: an import or a seed writes
+  -- all its rows in one statement, so they share one created_at. Among
+  -- ties Postgres promises no order, so without the tiebreaker a page
+  -- may repeat a row from the last one and skip another. The default
+  -- order matches idx_items_category_created exactly.
   IF p_sort_key IS NULL OR p_sort_key = '' THEN
-    order_sql := 'i.created_at DESC';
+    order_sql := 'i.created_at DESC, i.id';
   ELSIF p_sort_key = 'created_at' OR p_sort_key = 'updated_at' THEN
-    order_sql := format('i.%I %s', p_sort_key, dir);
+    order_sql := format('i.%I %s, i.id', p_sort_key, dir);
   ELSIF p_sort_key !~ key_re THEN
-    order_sql := 'i.created_at DESC';
+    order_sql := 'i.created_at DESC, i.id';
   ELSE
     -- The typed read is what makes 8 sort before 16, and 2024-02 before
     -- 2024-10. The try_* helpers turn a stray unreadable value into a
@@ -599,7 +610,7 @@ BEGIN
       WHEN 'boolean' THEN format('public.try_boolean(i.data->>%L)', p_sort_key)
       ELSE format('lower(i.data->>%L)', p_sort_key)
     END;
-    order_sql := format('%s %s NULLS LAST, i.created_at DESC', cast_expr, dir);
+    order_sql := format('%s %s NULLS LAST, i.created_at DESC, i.id', cast_expr, dir);
   END IF;
 
   -- ── Count, then page ──────────────────────────────────────

@@ -129,7 +129,9 @@ DECLARE
   key_re    CONSTANT TEXT := '^[a-z][a-z0-9_]*$';
   where_sql TEXT := 'TRUE';
   rank_sql  TEXT := '0::real';
-  order_sql TEXT := 'i.updated_at DESC';
+  -- i.id last: a total order, or LIMIT/OFFSET paging (the export pages
+  -- through this up to 200 times) can repeat and skip rows among ties.
+  order_sql TEXT := 'i.updated_at DESC, i.id';
   needle    TEXT := btrim(COALESCE(p_query, ''));
   flt       JSONB;
   fkey      TEXT;
@@ -150,7 +152,7 @@ BEGIN
       'ts_rank_cd(i.search_vector, websearch_to_tsquery(%L::regconfig, %L))::real',
       'english', needle
     );
-    order_sql := 'rank DESC, i.updated_at DESC';
+    order_sql := 'rank DESC, i.updated_at DESC, i.id';
   END IF;
 
   -- ── Scope ─────────────────────────────────────────────────
