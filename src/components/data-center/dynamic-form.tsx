@@ -20,6 +20,7 @@ import {
   isBlank,
   normaliseForSave,
   orphanedEntries,
+  safeHref,
   validateItemData,
 } from "@/lib/items";
 import { cn } from "@/lib/utils";
@@ -195,6 +196,8 @@ export function DynamicForm({
 
   const renderField = (field: EffectiveField) => {
     const value = values[field.key];
+    // Only an http(s) address becomes a link — see safeHref.
+    const href = field.type === "url" && !isBlank(value) ? safeHref(String(value)) : null;
     const id = `field-${field.key}`;
     const error = showError(field.key);
     const markProvenance = showProvenance && !grouped;
@@ -307,7 +310,7 @@ export function DynamicForm({
                 INPUT_CLASS,
                 error && "border-destructive",
                 field.unit && "pr-12",
-                field.type === "url" && !isBlank(value) && "pr-9"
+                href && "pr-9"
               )}
             />
             {field.unit && (
@@ -315,9 +318,9 @@ export function DynamicForm({
                 {field.unit}
               </span>
             )}
-            {field.type === "url" && !isBlank(value) && !errors[field.key] && (
+            {href && (
               <a
-                href={String(value).includes("://") ? String(value) : `https://${value}`}
+                href={href}
                 target="_blank"
                 rel="noopener noreferrer"
                 title="Open link"

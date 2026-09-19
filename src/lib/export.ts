@@ -8,8 +8,36 @@ export const CATEGORY_COLUMN = "_category";
 /** Reserved column for the item's id, so an export can be re-imported. */
 export const ID_COLUMN = "_id";
 
+// ── Formula guard (CSV injection) ────────────────────────────
+// A spreadsheet reads a cell that starts with = + - @ (or a tab or CR)
+// as a formula. Item data is typed by users, so a value such as
+// =HYPERLINK("https://evil.example","Open") would become a live formula
+// for whoever opens the export in Excel, Sheets or LibreOffice. Such a
+// cell is prefixed with an apostrophe, which all three read as "this is
+// text". A plain number like -5 is left alone: it is not a formula, and
+// prefixing it would turn every negative price into text.
+const FORMULA_START = /^[=+\-@\t\r]/;
+const PLAIN_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+
+/** Prefix a text value that a spreadsheet would run as a formula. */
+export function guardFormula(text: string): string {
+  return FORMULA_START.test(text) && !PLAIN_NUMBER.test(text) ? `'${text}` : text;
+}
+
 /**
- * Escape one CSV field per RFC 4180.
+ * Undo guardFormula, so an exported file re-imports to the values it
+ * was made from. Only strips an apostrophe that guardFormula would have
+ * added — one directly before a formula character.
+ */
+export function unguardFormula(text: string): string {
+  const rest = text.slice(1);
+  return text.startsWith("'") && FORMULA_START.test(rest) && !PLAIN_NUMBER.test(rest)
+    ? rest
+    : text;
+}
+
+/**
+ * Escape one CSV field per RFC 4180, after the formula guard.
  *
  * A field is quoted when it contains a comma, a quote, or a newline;
  * internal quotes are doubled. Getting this wrong does not produce a
@@ -19,9 +47,11 @@ export const ID_COLUMN = "_id";
 export function csvEscape(value: unknown): string {
   if (value === null || value === undefined) return "";
 
+  // Only strings are guarded: a number, boolean or JSON object can
+  // never start with a formula character that means anything.
   const text =
     typeof value === "string"
-      ? value
+      ? guardFormula(value)
       : typeof value === "object"
         ? JSON.stringify(value)
         : String(value);

@@ -39,6 +39,18 @@ function effective(overrides: Partial<EffectiveField> = {}): EffectiveField {
   };
 }
 
+describe("normaliseCell — formula guard", () => {
+  it("strips the apostrophe an export put before formula-like text", () => {
+    assert.equal(normaliseCell("'=1+1", "text"), "=1+1");
+    assert.equal(normaliseCell("'-5 dBm", "text"), "-5 dBm");
+  });
+
+  it("keeps an apostrophe the export would not have added", () => {
+    assert.equal(normaliseCell("'quoted'", "text"), "'quoted'");
+    assert.equal(normaliseCell("'-5", "text"), "'-5");
+  });
+});
+
 describe("normaliseCell — dates", () => {
   it("passes ISO through, dropping any time component", () => {
     assert.equal(normaliseCell("2024-03-04", "date"), "2024-03-04");

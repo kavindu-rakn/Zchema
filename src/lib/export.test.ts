@@ -15,8 +15,10 @@ import {
   csvRow,
   exportFilename,
   exportHeader,
+  guardFormula,
   ID_COLUMN,
   itemToRow,
+  unguardFormula,
 } from "./export.ts";
 
 describe("csvEscape", () => {
@@ -55,6 +57,45 @@ describe("csvEscape", () => {
 
   it("handles a value that is only a quote", () => {
     assert.equal(csvEscape('"'), '""""');
+  });
+});
+
+describe("csvEscape — formula guard", () => {
+  it("prefixes text a spreadsheet would run as a formula", () => {
+    assert.equal(csvEscape("=1+1"), "'=1+1");
+    assert.equal(csvEscape("@SUM(A1:A9)"), "'@SUM(A1:A9)");
+    assert.equal(csvEscape("+44 20 7946 0000"), "'+44 20 7946 0000");
+    assert.equal(csvEscape("-5 dBm"), "'-5 dBm");
+  });
+
+  it("guards before quoting, so the apostrophe lands inside the quotes", () => {
+    assert.equal(
+      csvEscape('=HYPERLINK("https://evil.example","Open")'),
+      `"'=HYPERLINK(""https://evil.example"",""Open"")"`
+    );
+  });
+
+  it("guards a leading tab or carriage return", () => {
+    assert.equal(csvEscape("\t=1+1"), "'\t=1+1");
+    assert.equal(csvEscape("\r=1+1"), `"'\r=1+1"`);
+  });
+
+  it("leaves plain numbers alone, as numbers or as text", () => {
+    assert.equal(csvEscape(-5), "-5");
+    assert.equal(csvEscape("-5"), "-5");
+    assert.equal(csvEscape("+3.25"), "+3.25");
+    assert.equal(csvEscape("-1e3"), "-1e3");
+  });
+
+  it("leaves a formula character that is not first alone", () => {
+    assert.equal(csvEscape("a=b"), "a=b");
+    assert.equal(csvEscape("user@example.com"), "user@example.com");
+  });
+
+  it("round-trips through unguardFormula", () => {
+    for (const value of ["=1+1", "@x", "-5 dBm", "+44 20", "-5", "plain", "'quoted"]) {
+      assert.equal(unguardFormula(guardFormula(value)), value);
+    }
   });
 });
 

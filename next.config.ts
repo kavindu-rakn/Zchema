@@ -1,6 +1,30 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // ── Security headers ───────────────────────────────────────
+  // Static, so they are set here for every response, assets included.
+  // The Content-Security-Policy is NOT here: it carries a per-request
+  // nonce, so src/proxy.ts builds it.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          // frame-ancestors in the CSP supersedes this; kept for
+          // browsers and scanners that only read the old header.
+          { key: "X-Frame-Options", value: "DENY" },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(), geolocation=(), browsing-topics=()",
+          },
+          { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+        ],
+      },
+    ];
+  },
+
   // ── Legacy route redirects ─────────────────────────────────
   // /categories and /catalog were two renderings of one workspace,
   // and /templates became /data-center/blueprints. These are 308s so

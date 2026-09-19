@@ -47,13 +47,27 @@ export function coerceValue(field: EffectiveField, raw: unknown): unknown {
   }
 }
 
-/** Loose URL check — accepts http(s) and protocol-relative forms. */
-function looksLikeUrl(value: string): boolean {
+/**
+ * The address a URL field's value may be opened at, or null.
+ *
+ * Loose about form — `example.com/page` gains `https://` — and strict
+ * about scheme: http and https only. The scheme check is the security
+ * boundary. `javascript://example.com/%0Aalert(1)` parses as a URL with
+ * a dotted hostname, and as a link it runs script: the `//example.com/`
+ * is a comment and the encoded newline ends it. A value can also reach
+ * the table by import or straight through the API without ever passing
+ * validateItemData, so the renderer must call this too, not trust that
+ * validation happened.
+ */
+export function safeHref(value: string): string | null {
+  const text = value.trim();
+  if (text === "") return null;
   try {
-    const url = new URL(value.includes("://") ? value : `https://${value}`);
-    return Boolean(url.hostname) && url.hostname.includes(".");
+    const url = new URL(text.includes("://") ? text : `https://${text}`);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.hostname.includes(".") ? url.href : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -113,7 +127,7 @@ export function validateItemData(
         break;
       }
       case "url": {
-        if (!looksLikeUrl(String(value))) {
+        if (safeHref(String(value)) === null) {
           errors[field.key] = `${field.label} does not look like a valid URL.`;
         }
         break;
