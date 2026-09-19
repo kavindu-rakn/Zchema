@@ -28,12 +28,13 @@ export default async function DataCenterLayout({
   // Editing affordances are hidden for non-admins. This is presentation
   // only — every mutation re-checks the role server-side.
   const canEdit = role === "SCHEMA_ADMIN";
+  const canUseTrash = canEdit || role === "DATA_EDITOR";
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] w-full overflow-hidden">
-      <Rail tree={tree} canEdit={canEdit} />
+      <Rail tree={tree} canEdit={canEdit} canUseTrash={canUseTrash} />
       <section className="min-w-0 flex-1 overflow-y-auto">
-        <MobileTreeDrawer tree={tree} canEdit={canEdit} />
+        <MobileTreeDrawer tree={tree} canEdit={canEdit} canUseTrash={canUseTrash} />
         {children}
       </section>
     </div>

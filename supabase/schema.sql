@@ -99,8 +99,17 @@ CREATE TABLE IF NOT EXISTS public.items (
   data           JSONB NOT NULL DEFAULT '{}'::jsonb,
   schema_version INTEGER NOT NULL DEFAULT 1,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Who added the item and who last changed it. Stamped by
+  -- stamp_item_authors() (§8b), never taken from the client.
+  created_by     UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  updated_by     UUID REFERENCES auth.users(id) ON DELETE SET NULL
 );
+
+-- For databases created before items had authors.
+ALTER TABLE public.items
+  ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS updated_by UUID REFERENCES auth.users(id) ON DELETE SET NULL;
 
 
 -- ============================================================
@@ -149,6 +158,36 @@ CREATE TABLE IF NOT EXISTS public.attributes (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+
+-- ============================================================
+-- 6b. Trash — deleting never destroys data
+-- ------------------------------------------------------------
+-- A trigger on items, categories and schema_versions (trash.sql) copies
+-- every deleted row here, so a delete by ANY route — the UI, a direct
+-- API call, an ON DELETE CASCADE — can be undone. Rows deleted together
+-- share a `batch`, drawn from trash_batch_seq: deleting a category with
+-- forty items is one entry, and restores as one.
+--
+-- Nothing reads this table directly. RLS is on with no policies, and
+-- list_trash(), restore_trash() and purge_trash() are the only way in.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.trash (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  batch      BIGINT NOT NULL,
+  table_name TEXT NOT NULL CHECK (table_name IN ('categories', 'items', 'schema_versions')),
+  row_id     UUID NOT NULL,
+  row_data   JSONB NOT NULL,
+  deleted_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  deleted_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE SEQUENCE IF NOT EXISTS public.trash_batch_seq;
+
+CREATE INDEX IF NOT EXISTS idx_trash_batch ON public.trash (batch);
+-- "Is this item's category in the trash?" — asked when listing and
+-- before restoring.
+CREATE INDEX IF NOT EXISTS idx_trash_row ON public.trash (row_id);
 
 
 -- ============================================================
@@ -214,6 +253,57 @@ CREATE TRIGGER update_blueprints_modtime BEFORE UPDATE ON public.blueprints FOR 
 CREATE TRIGGER update_categories_modtime BEFORE UPDATE ON public.categories FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
 CREATE TRIGGER update_items_modtime      BEFORE UPDATE ON public.items      FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
 CREATE TRIGGER update_attributes_modtime BEFORE UPDATE ON public.attributes FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
+
+
+-- ============================================================
+-- 8b. Item authorship
+-- ------------------------------------------------------------
+-- created_by / updated_by come from the session, never from the row the
+-- client sent — otherwise anyone could attribute their edits to someone
+-- else. A client (anon / authenticated) always gets auth.uid(). Code
+-- running as the owner — a SECURITY DEFINER function, the SQL editor —
+-- may pass them explicitly. Authorship never changes on update. A
+-- schema change that rewrites an item's data counts as an edit by
+-- whoever made the schema change.
+--
+-- restore_trash() sets zchema.restoring for its own transaction, and
+-- then rows go back exactly as they were — an unknown author stays
+-- unknown instead of becoming whoever clicked Restore. A client cannot
+-- use this: the check only applies to code running as the owner.
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.stamp_item_authors()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+DECLARE
+  from_client CONSTANT BOOLEAN := current_user IN ('anon', 'authenticated');
+BEGIN
+  IF NOT from_client AND current_setting('zchema.restoring', true) = 'on' THEN
+    RETURN NEW;
+  END IF;
+
+  IF TG_OP = 'INSERT' THEN
+    IF from_client OR NEW.created_by IS NULL THEN
+      NEW.created_by := auth.uid();
+    END IF;
+    IF from_client OR NEW.updated_by IS NULL THEN
+      NEW.updated_by := NEW.created_by;
+    END IF;
+  ELSE
+    NEW.created_by := OLD.created_by;
+    NEW.updated_by := COALESCE(auth.uid(), CASE WHEN from_client THEN NULL ELSE NEW.updated_by END);
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS items_stamp_authors ON public.items;
+CREATE TRIGGER items_stamp_authors
+  BEFORE INSERT OR UPDATE ON public.items
+  FOR EACH ROW EXECUTE FUNCTION public.stamp_item_authors();
+
+REVOKE EXECUTE ON FUNCTION public.stamp_item_authors() FROM PUBLIC, anon, authenticated;
 -- NB: schema_versions is append-only; it has no updated_at column and no modtime trigger.
 
 

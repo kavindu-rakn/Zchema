@@ -463,6 +463,8 @@ export async function deleteCategory(
     moved_items: number;
     orphaned_values: number;
     deleted_items: number;
+    /** The trash entry the deletion made — for Undo. */
+    trash_batch: string | null;
   }>
 > {
   try {
@@ -484,6 +486,7 @@ export async function deleteCategory(
         moved_items: number;
         orphaned_values: number;
         deleted_items: number;
+        trash_batch: string | null;
       },
     };
   } catch (error) {

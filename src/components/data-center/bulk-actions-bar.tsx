@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { DynamicForm } from "@/components/data-center/dynamic-form";
 import { iconFor } from "@/components/data-center/category-icons";
+import { toastTrashed } from "@/components/trash/trashed-toast";
 import {
   deleteItems,
   moveItems,
@@ -42,14 +43,9 @@ function flatten(nodes: CategoryNode[], depth = 0): { node: CategoryNode; depth:
   return nodes.flatMap((node) => [{ node, depth }, ...flatten(node.children, depth + 1)]);
 }
 
-/**
- * Above this many rows, deleting demands the count be typed out.
- *
- * A single "Are you sure?" is proportionate to losing three records and
- * not to losing fifty. The threshold exists so the friction lands where
- * the consequence does, rather than nagging on every small delete.
- */
-const TYPED_CONFIRM_THRESHOLD = 20;
+// Deleting used to demand the count be typed out above twenty rows,
+// because it was permanent. It no longer is — deleted items go to the
+// trash and Undo is one click — so one confirmation is proportionate.
 
 export function BulkActionsBar({
   selected,
@@ -69,11 +65,6 @@ export function BulkActionsBar({
   const [mode, setMode] = useState<"delete" | "edit" | "move" | null>(null);
   const [fieldKey, setFieldKey] = useState<string>("");
   const [target, setTarget] = useState<string | null>(null);
-  const [deleteConfirmation, setDeleteConfirmation] = useState("");
-
-  const needsTypedConfirm = selected.length > TYPED_CONFIRM_THRESHOLD;
-  const deleteConfirmed =
-    !needsTypedConfirm || deleteConfirmation.trim() === String(selected.length);
 
   // Leaving "move" forgets the destination, so reopening starts fresh.
   const [lastMode, setLastMode] = useState(mode);
@@ -112,20 +103,21 @@ export function BulkActionsBar({
     };
   }, [previewRequest, selected, target]);
 
-  const close = () => {
-    setMode(null);
-    setDeleteConfirmation("");
-  };
+  const close = () => setMode(null);
 
   const runDelete = () =>
     startTransition(async () => {
-      if (!deleteConfirmed) return;
       const result = await deleteItems(selected, categoryId);
       if (!result.ok) {
         toast.error(result.error);
         return;
       }
-      toast.success(`Deleted ${result.data.deleted} item${result.data.deleted === 1 ? "" : "s"}`);
+      const { deleted, trashBatch } = result.data;
+      toastTrashed(
+        `Moved ${deleted} item${deleted === 1 ? "" : "s"} to the trash`,
+        trashBatch,
+        () => router.refresh()
+      );
       close();
       onClear();
       router.refresh();
@@ -200,34 +192,13 @@ export function BulkActionsBar({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              Delete {selected.length} item{selected.length === 1 ? "" : "s"}?
+              Move {selected.length} item{selected.length === 1 ? "" : "s"} to the trash?
             </DialogTitle>
             <DialogDescription>
-              This cannot be undone. These rows and every value in them are destroyed.
+              They leave this category now, and can be restored from the Trash with every
+              value as it was.
             </DialogDescription>
           </DialogHeader>
-
-          {/* Past the threshold the count has to be typed. Muscle
-              memory gets you through a confirm button; it does not get
-              you through typing "48". */}
-          {needsTypedConfirm && (
-            <div className="space-y-1.5">
-              <label htmlFor="bulk-delete-confirm" className="text-sm text-foreground">
-                Type <strong className="font-mono">{selected.length}</strong> to confirm
-              </label>
-              <input
-                id="bulk-delete-confirm"
-                value={deleteConfirmation}
-                onChange={(event) => setDeleteConfirmation(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && deleteConfirmed) runDelete();
-                }}
-                inputMode="numeric"
-                autoComplete="off"
-                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-            </div>
-          )}
 
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={close} disabled={pending}>
@@ -235,10 +206,10 @@ export function BulkActionsBar({
             </Button>
             <Button
               onClick={runDelete}
-              disabled={pending || !deleteConfirmed}
+              disabled={pending}
               className="bg-destructive text-white hover:bg-destructive/90"
             >
-              {pending ? "Deleting…" : "Delete permanently"}
+              {pending ? "Moving…" : "Move to trash"}
             </Button>
           </div>
         </DialogContent>

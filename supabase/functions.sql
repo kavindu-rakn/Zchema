@@ -622,7 +622,9 @@ BEGIN
   EXECUTE format(
     '%s SELECT COALESCE(jsonb_agg(rw ORDER BY rw.ord), %L::jsonb) FROM ('
     || 'SELECT row_number() OVER (ORDER BY %s) AS ord, i.id, i.category_id, i.data, '
-    || 'i.schema_version, i.created_at, i.updated_at, c.name AS category_name '
+    || 'i.schema_version, i.created_at, i.updated_at, c.name AS category_name, '
+    || 'public.member_email(i.created_by) AS created_by_email, '
+    || 'public.member_email(i.updated_by) AS updated_by_email '
     || 'FROM public.items i JOIN public.categories c ON c.id = i.category_id %s '
     || 'WHERE %s AND %s %s ORDER BY %s LIMIT %s OFFSET %s'
     || ') rw',

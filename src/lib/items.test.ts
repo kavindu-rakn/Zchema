@@ -8,7 +8,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { safeHref, validateItemData } from "./items.ts";
+import { itemTitle, safeHref, validateItemData } from "./items.ts";
 import type { EffectiveField } from "./types.ts";
 
 describe("safeHref — what becomes a link", () => {
@@ -43,6 +43,23 @@ describe("safeHref — what becomes a link", () => {
     assert.equal(safeHref("   "), null);
     assert.equal(safeHref("localhost"), null);
     assert.equal(safeHref("call for a quote"), null);
+  });
+});
+
+describe("itemTitle", () => {
+  it("prefers a key that usually names the item", () => {
+    assert.equal(itemTitle({ color: "red", sku: "A-1", name: "Aeron" }), "Aeron");
+    assert.equal(itemTitle({ color: "red", sku: "A-1" }), "A-1");
+  });
+
+  it("falls back to the first text value, never an orphaned one", () => {
+    assert.equal(itemTitle({ __orphaned: { name: "Old" }, color: "red" }), "red");
+  });
+
+  it("returns null when there is nothing to call it", () => {
+    assert.equal(itemTitle({ price: 12, in_stock: true }), null);
+    assert.equal(itemTitle({ name: "   " }), null);
+    assert.equal(itemTitle(null), null);
   });
 });
 

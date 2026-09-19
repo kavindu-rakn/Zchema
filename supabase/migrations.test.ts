@@ -1,7 +1,7 @@
 // ── Migration drift tests ────────────────────────────────────
 // Run with:  npm test
 //
-// The nine supabase/*.sql feature files are the readable source of truth;
+// The supabase/*.sql feature files are the readable source of truth;
 // supabase/migrations/ is what a database actually runs. Two sources can
 // drift, so this replays both — the feature files in load order, and the
 // migrations in version order — and asserts they end in the same state for
@@ -36,6 +36,7 @@ const FEATURE_FILES = [
   "search",
   "import",
   "onboarding",
+  "trash",
 ];
 
 const read = (path: string) => readFileSync(path, "utf8").replace(/\r/g, "");

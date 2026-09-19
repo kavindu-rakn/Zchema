@@ -183,6 +183,26 @@ export function normaliseForSave(
   return out;
 }
 
+/** Keys that usually name an item, most telling first. */
+const TITLE_KEYS = ["name", "title", "model", "model_number", "label", "sku", "brand", "author"];
+
+/**
+ * A human name for an item when its schema is not at hand — the command
+ * palette, the dashboard feed, the trash. A likely-named key first, then
+ * the first text value; null if the item has no text at all.
+ */
+export function itemTitle(data: Record<string, unknown> | null | undefined): string | null {
+  if (!data) return null;
+  for (const key of TITLE_KEYS) {
+    const value = data[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  for (const [key, value] of Object.entries(data)) {
+    if (key !== ORPHAN_KEY && typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
 /** Values held under `__orphaned`, as entries. */
 export function orphanedEntries(data: Record<string, unknown>): [string, unknown][] {
   const orphaned = data?.[ORPHAN_KEY];

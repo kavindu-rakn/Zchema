@@ -19,14 +19,17 @@ import {
 import { CategoryTree } from "@/components/data-center/category-tree";
 import { NewRootCategory } from "@/components/data-center/new-root-category";
 import { activeIdFromPath, useTreeExpansion } from "@/components/data-center/rail";
+import { TrashLink } from "@/components/trash/trash-link";
 import type { CategoryNode } from "@/lib/types";
 
 export function MobileTreeDrawer({
   tree,
   canEdit,
+  canUseTrash,
 }: {
   tree: CategoryNode[];
   canEdit: boolean;
+  canUseTrash: boolean;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -82,8 +85,9 @@ export function MobileTreeDrawer({
             />
           </nav>
 
-          <div className="border-t border-border p-2">
+          <div className="space-y-0.5 border-t border-border p-2">
             <NewRootCategory />
+            {canUseTrash && <TrashLink active={pathname === "/data-center/trash"} />}
           </div>
         </SheetContent>
       </Sheet>

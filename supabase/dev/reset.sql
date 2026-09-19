@@ -9,9 +9,12 @@
 -- Never run this against a database you care about. To change a live
 -- database, add a migration in supabase/migrations/ instead.
 --
--- Afterwards, rebuild with the baseline migration (or the nine
--- supabase/*.sql files in load order), then a seed.
+-- Afterwards, rebuild with `npm run db:push` (or the supabase/*.sql
+-- feature files in load order), then a seed. The trash goes too: this
+-- is the one delete that does not land in it.
 -- ============================================================
+DROP TABLE IF EXISTS public.trash           CASCADE;
+DROP SEQUENCE IF EXISTS public.trash_batch_seq;
 DROP TABLE IF EXISTS public.items           CASCADE;
 DROP TABLE IF EXISTS public.schema_versions CASCADE;
 DROP TABLE IF EXISTS public.attributes      CASCADE;

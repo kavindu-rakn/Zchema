@@ -13,6 +13,7 @@ import { Search } from "lucide-react";
 import { CategoryTree } from "@/components/data-center/category-tree";
 import { NewRootCategory } from "@/components/data-center/new-root-category";
 import { ImportEntry } from "@/components/import/import-entry";
+import { TrashLink } from "@/components/trash/trash-link";
 import {
   parseStoredList,
   readStoredValue,
@@ -32,7 +33,9 @@ const EXPANDED_KEY = "zchema:tree-expanded";
 export function activeIdFromPath(pathname: string): string | null {
   if (!pathname.startsWith("/data-center/")) return null;
   const segment = pathname.split("/")[2];
-  if (!segment || segment === "blueprints" || segment === "attributes") return null;
+  if (!segment || segment === "blueprints" || segment === "attributes" || segment === "trash") {
+    return null;
+  }
   return segment;
 }
 
@@ -94,9 +97,12 @@ export function useTreeExpansion(tree: CategoryNode[]) {
 export function Rail({
   tree,
   canEdit,
+  canUseTrash,
 }: {
   tree: CategoryNode[];
   canEdit: boolean;
+  /** DATA_EDITOR and up — wider than canEdit, which is SCHEMA_ADMIN. */
+  canUseTrash: boolean;
 }) {
   const pathname = usePathname();
   const [filter, setFilter] = useState("");
@@ -191,6 +197,7 @@ export function Rail({
         <div className="shrink-0 space-y-0.5 border-t border-border p-2">
           <NewRootCategory />
           {canEdit && <ImportEntry tree={tree} />}
+          {canUseTrash && <TrashLink active={pathname === "/data-center/trash"} />}
         </div>
       </aside>
 

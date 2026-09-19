@@ -3,31 +3,9 @@
 import { createClient } from "@/utils/supabase/server";
 import type { Item } from "@/lib/types";
 
-/** Items belonging directly to one category, newest first. */
-export async function getItems(categoryId: string): Promise<Item[]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("items")
-    .select("*")
-    .eq("category_id", categoryId)
-    .order("created_at", { ascending: false });
-
-  if (error) throw new Error(`Could not load items: ${error.message}`);
-  return (data ?? []) as Item[];
-}
-
-/** A single item by id. */
-export async function getItem(id: string): Promise<Item> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("items")
-    .select("*")
-    .eq("id", id)
-    .single();
-
-  if (error) throw new Error(`Could not load that item: ${error.message}`);
-  return data as Item;
-}
+// There is deliberately no "get every item in a category" here. Items
+// are read through queryItems(), which pages server-side — an unbounded
+// select("*") is fine at 20 rows and an outage at 200,000.
 
 export type FilterOp =
   | "contains"
@@ -48,6 +26,9 @@ export interface ItemFilter {
 
 export interface ItemRow extends Item {
   category_name: string;
+  /** Resolved by query_items(); null when the author is unknown. */
+  created_by_email?: string | null;
+  updated_by_email?: string | null;
 }
 
 export type ItemHealth = "incomplete" | "orphaned";

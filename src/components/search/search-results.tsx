@@ -17,6 +17,7 @@ import { Columns2, LayoutList, Rows3, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { CompareDialog } from "@/components/search/compare-dialog";
+import { itemTitle } from "@/lib/items";
 import { cn } from "@/lib/utils";
 import type { SearchFilter, SearchResult } from "@/lib/types";
 
@@ -50,16 +51,9 @@ function highlight(text: string, terms: string[]) {
   );
 }
 
-/** The field most likely to name the item. */
+/** The item's name — see itemTitle. */
 function displayValue(data: Record<string, unknown>): string {
-  for (const key of ["name", "title", "model", "model_number", "label", "sku"]) {
-    const value = data[key];
-    if (typeof value === "string" && value.trim()) return value;
-  }
-  const first = Object.entries(data).find(
-    ([key, value]) => key !== "__orphaned" && typeof value === "string" && value.trim()
-  );
-  return (first?.[1] as string) ?? "Untitled item";
+  return itemTitle(data) ?? "Untitled item";
 }
 
 /**

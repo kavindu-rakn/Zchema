@@ -32,6 +32,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/utils/supabase/client";
 import { parseQuery } from "@/lib/query-dsl";
+import { itemTitle } from "@/lib/items";
 import type { SearchResult } from "@/lib/types";
 
 interface CategoryRow {
@@ -289,14 +290,7 @@ export function CommandPalette() {
   );
 }
 
-/** The field most likely to name an item, mirroring the search page. */
+/** The item's name — see itemTitle. */
 function itemLabel(data: Record<string, unknown>): string {
-  for (const key of ["name", "title", "model", "model_number", "label", "sku"]) {
-    const value = data[key];
-    if (typeof value === "string" && value.trim()) return value;
-  }
-  const first = Object.entries(data).find(
-    ([key, value]) => key !== "__orphaned" && typeof value === "string" && value.trim()
-  );
-  return (first?.[1] as string) ?? "Untitled item";
+  return itemTitle(data) ?? "Untitled item";
 }

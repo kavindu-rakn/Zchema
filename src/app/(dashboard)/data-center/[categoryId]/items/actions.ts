@@ -124,45 +124,36 @@ export async function updateItem(
   }
 }
 
-export async function deleteItem(
-  itemId: string,
-  categoryId: string
-): Promise<ActionResult> {
-  try {
-    await requireDataEditor();
-
-    const supabase = await createClient();
-    const { error } = await supabase.from("items").delete().eq("id", itemId);
-    if (error) throw new Error(error.message);
-
-    revalidateCategory(categoryId);
-    return { ok: true, data: null };
-  } catch (error) {
-    return actionError(error, "Could not delete the item.");
-  }
-}
-
+/**
+ * Move items to the trash. Nothing is destroyed: the database copies
+ * every deleted row into the trash (supabase/trash.sql), and
+ * `trashBatch` is the entry to hand restoreTrash() for Undo.
+ */
 export async function deleteItems(
   itemIds: string[],
   categoryId: string
-): Promise<ActionResult<{ deleted: number }>> {
+): Promise<ActionResult<{ deleted: number; trashBatch: string | null }>> {
   try {
     await requireDataEditor();
-    if (itemIds.length === 0) return { ok: true, data: { deleted: 0 } };
+    if (itemIds.length === 0) return { ok: true, data: { deleted: 0, trashBatch: null } };
 
     const supabase = await createClient();
-    const { error, count } = await supabase
-      .from("items")
-      .delete({ count: "exact" })
-      .in("id", itemIds);
-
+    const { data, error } = await supabase.rpc("delete_items", { p_item_ids: itemIds });
     if (error) throw new Error(error.message);
 
+    const result = data as { deleted: number; trash_batch: string | null };
     revalidateCategory(categoryId);
-    return { ok: true, data: { deleted: count ?? itemIds.length } };
+    return { ok: true, data: { deleted: result.deleted, trashBatch: result.trash_batch } };
   } catch (error) {
     return actionError(error, "Could not delete those items.");
   }
+}
+
+export async function deleteItem(
+  itemId: string,
+  categoryId: string
+): Promise<ActionResult<{ deleted: number; trashBatch: string | null }>> {
+  return deleteItems([itemId], categoryId);
 }
 
 /**

@@ -1575,7 +1575,12 @@ $$;
 --
 --   false → plain cascade.
 --
--- Returns { deleted_categories, moved_items, orphaned_values, deleted_items }.
+-- Either way nothing is destroyed: every deleted category, item and
+-- schema version lands in the trash as one batch (trash.sql), which
+-- restore_trash() puts back.
+--
+-- Returns { deleted_categories, moved_items, orphaned_values,
+--           deleted_items, trash_batch }.
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.delete_category_safely(
   p_category_id          UUID,
@@ -1597,6 +1602,8 @@ DECLARE
   move_result  JSONB := jsonb_build_object('moved', 0, 'carried', 0, 'orphaned', 0);
 BEGIN
   PERFORM public.require_schema_admin();
+  -- This deletion is one trash entry of its own (trash.sql).
+  PERFORM public.start_trash_batch();
 
   SELECT c.parent_id INTO v_parent_id FROM public.categories c WHERE c.id = p_category_id;
   IF NOT FOUND THEN
@@ -1630,7 +1637,8 @@ BEGIN
     'deleted_categories', n_categories,
     'moved_items',        n_moved,
     'orphaned_values',    COALESCE((move_result->>'orphaned')::int, 0),
-    'deleted_items',      n_items - n_moved
+    'deleted_items',      n_items - n_moved,
+    'trash_batch',        public.current_trash_batch()
   );
 END;
 $$;
