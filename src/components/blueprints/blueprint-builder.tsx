@@ -6,7 +6,7 @@
 // vocabulary though — the full FieldType union plus position, unit and
 // help_text.
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Reorder, useDragControls } from "framer-motion";
 import { GripVertical, Plus, Trash2 } from "lucide-react";
@@ -16,6 +16,8 @@ import { Button } from "@/components/ui/button";
 import { OptionsEditor } from "@/components/data-center/options-editor";
 import { updateBlueprint } from "@/app/(dashboard)/data-center/blueprints/actions";
 import { useUnsavedWarning } from "@/components/use-unsaved-warning";
+import { useDraft } from "@/components/use-draft";
+import { draftKey } from "@/lib/drafts";
 import { slugify, validateFieldKey } from "@/lib/schema";
 import type { Blueprint, FieldType, SchemaField } from "@/lib/types";
 
@@ -54,21 +56,36 @@ export function BlueprintBuilder({
   const [fields, setFields] = useState<DraftField[]>(() => toDraft(blueprint.fields ?? []));
   const [pending, startTransition] = useTransition();
 
-  // Reset when navigating between blueprints, or when a save refreshes this
-  // one's fields. Adjusted during render rather than in an effect.
-  const [seededFrom, setSeededFrom] = useState({ id: blueprint.id, fields: blueprint.fields });
-  if (blueprint.id !== seededFrom.id || blueprint.fields !== seededFrom.fields) {
-    setSeededFrom({ id: blueprint.id, fields: blueprint.fields });
+  // Reset when navigating between blueprints, or when a save refreshes
+  // this one's fields. Adjusted during render rather than in an effect,
+  // and compared by CONTENT: `blueprint.fields` arrives as a new array
+  // on every render of the server component above, so an identity check
+  // threw away half-edited fields whenever anything refreshed the route.
+  const saved = useMemo(() => JSON.stringify(blueprint.fields ?? []), [blueprint.fields]);
+  const [seededFrom, setSeededFrom] = useState({ id: blueprint.id, saved });
+  if (blueprint.id !== seededFrom.id || saved !== seededFrom.saved) {
+    setSeededFrom({ id: blueprint.id, saved });
     setFields(toDraft(blueprint.fields ?? []));
   }
 
-  const dirty = useMemo(
-    () => JSON.stringify(strip(fields)) !== JSON.stringify(blueprint.fields ?? []),
-    [fields, blueprint.fields]
-  );
+  const dirty = useMemo(() => JSON.stringify(strip(fields)) !== saved, [fields, saved]);
 
-  // These fields live nowhere but this form until Save.
+  // These fields live nowhere but this form until Save, so warn before
+  // a reload or a closed tab…
   useUnsavedWarning(dirty);
+
+  // …and keep them across an in-app navigation, which the browser
+  // never hears about. Offered back rather than restored silently.
+  const draft = useDraft<SchemaField[]>(draftKey("blueprint", blueprint.id));
+  const { save: saveDraft, forget: forgetDraft } = draft;
+
+  const stored = useMemo(() => strip(fields), [fields]);
+  useEffect(() => {
+    if (dirty) saveDraft(stored);
+  }, [dirty, stored, saveDraft]);
+
+  const offered = draft.offered;
+  const offerDiffers = offered != null && JSON.stringify(offered) !== saved;
 
   const errors = fields.map((field, index) => {
     if (!field.label.trim()) return "A label is required.";
@@ -98,12 +115,35 @@ export function BlueprintBuilder({
         return;
       }
       toast.success("Blueprint saved");
+      // Saved: nothing left that exists only in this tab.
+      forgetDraft();
       router.refresh();
     });
   };
 
   return (
     <div className="space-y-3">
+      {/* Work carried over from a previous visit to this tab. */}
+      {canEdit && offered && offerDiffers && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/40 bg-primary/5 px-4 py-3">
+          <p className="text-sm text-foreground">You left unsaved changes to these fields.</p>
+          <div className="flex shrink-0 gap-2">
+            <Button size="sm" variant="ghost" onClick={forgetDraft}>
+              Discard
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                setFields(toDraft(offered));
+                draft.dismiss();
+              }}
+            >
+              Restore them
+            </Button>
+          </div>
+        </div>
+      )}
+
       {fields.length === 0 ? (
         <p className="rounded-md border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
           No fields yet. Add the fields a category should start with.

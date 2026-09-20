@@ -23,6 +23,12 @@ import {
   safeHref,
   validateItemData,
 } from "@/lib/items";
+import {
+  clearDraft as forgetDraft,
+  draftKey,
+  readDraft,
+  writeDraft,
+} from "@/lib/drafts";
 import { cn } from "@/lib/utils";
 import type { EffectiveField, FieldType } from "@/lib/types";
 
@@ -58,7 +64,7 @@ function seedValues(
 
 /** Where the form keeps an unsaved draft. One place, so callers agree. */
 function draftKeyFor(categoryId: string | undefined, itemId: string | null): string | null {
-  return categoryId ? `zchema:draft:${categoryId}:${itemId ?? "new"}` : null;
+  return categoryId ? draftKey("item", `${categoryId}:${itemId ?? "new"}`) : null;
 }
 
 /**
@@ -68,24 +74,19 @@ function draftKeyFor(categoryId: string | undefined, itemId: string | null): str
  */
 export function clearDraft(categoryId: string, itemId: string | null) {
   const key = draftKeyFor(categoryId, itemId);
-  if (!key || typeof window === "undefined") return;
-  try {
-    window.sessionStorage.removeItem(key);
-  } catch {
-    // Nothing to clean up.
-  }
+  if (key) forgetDraft(key);
 }
 
-/** A saved draft for this form, or nothing. Never throws. */
-function readDraft(draftKey: string | null, disabled: boolean): Record<string, unknown> {
-  if (!draftKey || disabled || typeof window === "undefined") return {};
-  try {
-    const stored = window.sessionStorage.getItem(draftKey);
-    return stored ? JSON.parse(stored) : {};
-  } catch {
-    // Corrupt or unavailable storage — start clean.
-    return {};
-  }
+/**
+ * A saved draft for this form, or nothing.
+ *
+ * Folded straight back into the field values rather than offered the
+ * way the schema editor offers its draft: it is the same item, the
+ * fields are on screen, and the user can see what came back.
+ */
+function readFormDraft(key: string | null, disabled: boolean): Record<string, unknown> {
+  if (!key || disabled) return {};
+  return readDraft<Record<string, unknown>>(key) ?? {};
 }
 
 export interface DynamicFormProps {
@@ -142,7 +143,7 @@ export function DynamicForm({
   // dialog close does not lose a half-filled form.
   const [values, setValues] = useState<Record<string, unknown>>(() => ({
     ...seedValues(schema, initialData ?? {}),
-    ...readDraft(draftKey, disabled),
+    ...readFormDraft(draftKey, disabled),
   }));
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [submitted, setSubmitted] = useState(false);
@@ -167,7 +168,7 @@ export function DynamicForm({
     setSeededFor(itemId);
     setValues({
       ...seedValues(schema, initialData ?? {}),
-      ...(switchedItem ? readDraft(draftKey, disabled) : {}),
+      ...(switchedItem ? readFormDraft(draftKey, disabled) : {}),
     });
     setTouched(new Set());
     setSubmitted(false);
@@ -187,13 +188,7 @@ export function DynamicForm({
     (key: string, value: unknown) => {
       setValues((previous) => {
         const next = { ...previous, [key]: value };
-        if (draftKey && !disabled) {
-          try {
-            window.sessionStorage.setItem(draftKey, JSON.stringify(next));
-          } catch {
-            // Storage full or blocked — editing still works.
-          }
-        }
+        if (draftKey && !disabled) writeDraft(draftKey, next);
         return next;
       });
     },
@@ -210,13 +205,7 @@ export function DynamicForm({
     const saved = await onSubmit?.(normaliseForSave(schema, values));
     if (saved === false) return;
 
-    if (draftKey) {
-      try {
-        window.sessionStorage.removeItem(draftKey);
-      } catch {
-        // Nothing to clean up.
-      }
-    }
+    if (draftKey) forgetDraft(draftKey);
   };
 
   const orphans = orphanedEntries(values);
