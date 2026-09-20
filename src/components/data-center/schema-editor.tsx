@@ -43,6 +43,7 @@ import {
   applySchemaChange,
   rollbackSchemaVersion,
 } from "@/app/(dashboard)/data-center/actions";
+import { useUnsavedWarning } from "@/components/use-unsaved-warning";
 import { resolveEffectiveSchema, slugify, validateFieldKey } from "@/lib/schema";
 import { cn } from "@/lib/utils";
 import type {
@@ -146,6 +147,9 @@ export function SchemaEditor({
       JSON.stringify(overrides) !== JSON.stringify(category.overrides ?? {}),
     [ownFields, overrides, category]
   );
+
+  // A drafted schema exists nowhere but this editor until it is applied.
+  useUnsavedWarning(dirty);
 
   // Browser-level guard. Next's App Router has no navigation blocker,
   // so this covers reloads and closing the tab.

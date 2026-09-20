@@ -6,16 +6,14 @@
 // navigation now lives here and the category tree becomes the real
 // navigation inside the Data Center.
 
-import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
-import { LogOut, Settings, UserCog } from "lucide-react";
+import { LogOut, Settings } from "lucide-react";
 
 import { createClient } from "@/utils/supabase/client";
 import { LogoMark } from "@/components/brand/logo-mark";
 import { CommandPalette } from "@/components/command-palette";
-import { RoleSwitcher, canSwitchRole } from "@/components/role-switcher";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
@@ -50,10 +48,8 @@ export function TopBar({
   profile: Profile | null;
 }) {
   const router = useRouter();
-  const [roleDialogOpen, setRoleDialogOpen] = useState(false);
 
   const role = profile?.role ?? "VIEWER";
-  const showRoleSwitch = canSwitchRole(user?.email);
 
   const handleSignOut = async () => {
     const supabase = createClient();
@@ -120,20 +116,12 @@ export function TopBar({
                 Settings
               </DropdownMenuItem>
 
-              {showRoleSwitch && (
-                <DropdownMenuItem
-                  className="cursor-pointer"
-                  // Defer opening until the menu has closed, so the dialog
-                  // does not fight the dropdown for focus.
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    setTimeout(() => setRoleDialogOpen(true), 0);
-                  }}
-                >
-                  <UserCog className="mr-2 h-4 w-4" />
-                  Switch role
-                </DropdownMenuItem>
-              )}
+              {/* A dev-only "Switch role" item lived here. It had been
+                  dead since the Base UI migration — it used Radix's
+                  onSelect, which Base UI never calls — and reviving it
+                  would have been a trap: demoting yourself is one-way,
+                  since only an admin may change a role. Roles are
+                  changed in Settings → Users, which is real. */}
 
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -147,14 +135,6 @@ export function TopBar({
           </DropdownMenu>
         </div>
       </header>
-
-      {/* Rendered outside the dropdown so closing the menu cannot unmount it. */}
-      <RoleSwitcher
-        user={user}
-        profile={profile}
-        open={roleDialogOpen}
-        onOpenChange={setRoleDialogOpen}
-      />
     </>
   );
 }

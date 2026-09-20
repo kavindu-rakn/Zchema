@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { OptionsEditor } from "@/components/data-center/options-editor";
 import { updateBlueprint } from "@/app/(dashboard)/data-center/blueprints/actions";
+import { useUnsavedWarning } from "@/components/use-unsaved-warning";
 import { slugify, validateFieldKey } from "@/lib/schema";
 import type { Blueprint, FieldType, SchemaField } from "@/lib/types";
 
@@ -65,6 +66,9 @@ export function BlueprintBuilder({
     () => JSON.stringify(strip(fields)) !== JSON.stringify(blueprint.fields ?? []),
     [fields, blueprint.fields]
   );
+
+  // These fields live nowhere but this form until Save.
+  useUnsavedWarning(dirty);
 
   const errors = fields.map((field, index) => {
     if (!field.label.trim()) return "A label is required.";

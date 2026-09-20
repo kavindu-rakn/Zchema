@@ -6,9 +6,11 @@
 // Losing the tree because one category's schema query threw leaves the
 // user with no way out except the back button.
 
-import { AlertTriangle, RefreshCcw } from "lucide-react";
+import { AlertTriangle, Loader2, RefreshCcw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useTransientRetry } from "@/components/use-transient-retry";
+import { TRANSIENT_MESSAGE, isTransientError } from "@/lib/transient";
 
 export function PaneError({
   error,
@@ -25,6 +27,21 @@ export function PaneError({
   /** What failed, named — "this category", "the search". */
   what: string;
 }) {
+  // A token that rotated mid-request is worth one quiet retry before
+  // anyone is shown anything.
+  const retrying = useTransientRetry(error.message, retry);
+
+  if (retrying) {
+    return (
+      <div role="status" className="flex min-h-[50vh] items-center justify-center p-6">
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Reconnecting…
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div role="alert" className="flex min-h-[50vh] items-center justify-center p-6">
       <div className="flex max-w-md flex-col items-center gap-3 text-center">
@@ -36,9 +53,12 @@ export function PaneError({
 
         {/* The Phase 1 triggers raise messages written for humans, so
             showing the message beats hiding it behind "an error
-            occurred". */}
+            occurred" — except for the session and connection errors,
+            whose text says nothing a user can act on. */}
         <p className="text-sm text-muted-foreground">
-          {error.message || "Something went wrong fetching this."}
+          {isTransientError(error.message)
+            ? TRANSIENT_MESSAGE
+            : error.message || "Something went wrong fetching this."}
         </p>
 
         {error.digest && (
