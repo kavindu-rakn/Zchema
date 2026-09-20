@@ -121,7 +121,7 @@ npm run db:push     # applies supabase/migrations/ in order and records each one
 npm run db:status   # which migrations this database has run
 ```
 
-The migrations are built from nine feature files, which are the place to read the database. They
+The migrations are built from the feature files, which are the place to read the database. They
 load in this order, each depending on the ones before it:
 
 | file | what it adds |
@@ -135,6 +135,8 @@ load in this order, each depending on the ones before it:
 | `supabase/search.sql` | full-text vector, `search_items`, facets |
 | `supabase/import.sql` | transactional import |
 | `supabase/onboarding.sql` | sample catalog, hint state |
+| `supabase/trash.sql` | capture every delete, restore, purge |
+| `supabase/invites.sql` | invitations, and claiming one |
 
 Then paste one seed into the SQL editor:
 
@@ -147,7 +149,8 @@ Then paste one seed into the SQL editor:
 
 Roles: `SCHEMA_ADMIN` owns the data model, `DATA_EDITOR` owns item data only, `VIEWER` reads.
 The first account to sign up on a fresh instance becomes `SCHEMA_ADMIN`; everyone after it starts
-as `VIEWER` and is promoted from **Settings → Users**.
+as `VIEWER`, and is either promoted from **Settings → Users** or invited with a role from
+**Settings → Invitations**, which produces a signup link that carries the role.
 
 Every feature file is safe to re-run, and none of them drops a table. The one script that does is
 `supabase/dev/reset.sql`, for dev databases only. Every seed file **replaces** the catalog.
@@ -158,7 +161,7 @@ To change the database, edit the feature file and add a migration carrying the s
 ### Tests
 
 ```bash
-npm test            # 278 tests: resolver cases, migration drift, query DSL, CSV, export, redirects
+npm test            # 318 tests: resolver cases, migration drift, query DSL, CSV, export, redirects
 npm run typecheck
 npm run lint
 ```
@@ -211,9 +214,27 @@ rows it rejects — it fails on rows it never meant to touch, the moment one ite
 `try_numeric()`, `try_boolean()` or `try_date()`, which yield NULL instead of aborting the
 statement.
 
+**Deleting is a move, and the database is what guarantees it.** A trigger copies every deleted
+item, category and schema version into a trash table, so it holds however the delete arrived —
+the UI, a direct API call, or a cascade from deleting a category. Rows deleted together restore
+as one, and an item whose field disappeared meanwhile comes back with that value under
+`__orphaned` rather than dropped. Exactly two paths destroy anything, both needing an explicit
+confirmation: the `discard` remediation and emptying a trash entry.
+
+**A save that would overwrite someone else's is refused.** An item save carries the `updated_at`
+it loaded; a schema save carries the version the editor loaded, and `apply_schema_change()`
+locks the category before comparing, so two saves cannot both pass the check. The second person
+is told who changed it and chooses: take their version, or overwrite deliberately. Silent
+last-writer-wins is the one outcome not on offer.
+
 **Server actions re-check the role.** A Server Action is a public POST endpoint. RLS guards the
 tables underneath, but every mutation also checks the caller's role server-side, because
 rendering a button conditionally is a UI affordance, not a security boundary.
+
+**An invitation is not a role.** Invitations carry the role a new teammate lands in, and travel
+as a link whose token is stored only as a SHA-256. The role is granted when the invited address
+is confirmed, never when someone merely types it into the signup form — so a leaked link on its
+own gets nobody in.
 
 Fuller treatment in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). A five-minute scripted
 walkthrough in [`docs/DEMO.md`](docs/DEMO.md).
@@ -248,4 +269,5 @@ In order, each building on the last:
 ## Not built, deliberately
 
 Computed fields; a public read-only catalog view; scheduled exports; per-locale values and
-channel syndication; billing and multi-tenant workspaces (see above).
+channel syndication; billing and multi-tenant workspaces (see above). Zchema also sends no email
+of its own: an invitation is a link to pass on, and password resets go through Supabase.

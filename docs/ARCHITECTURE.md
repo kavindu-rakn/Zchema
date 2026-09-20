@@ -166,8 +166,10 @@ restoring the shape of a schema cannot un-migrate the records inside it.
 | `attributes` | all authenticated | `SCHEMA_ADMIN` |
 | `items` | all authenticated | `SCHEMA_ADMIN`, `DATA_EDITOR` |
 | `schema_versions` | all authenticated | **INSERT only**, `SCHEMA_ADMIN` |
+| `trash` | nobody | nobody — functions only (§8) |
+| `invitations` | nobody | nobody — functions only (§10) |
 
-Three details that are easy to get wrong:
+Four details that are easy to get wrong:
 
 **`schema_versions` is append-only by omission.** It has no UPDATE or DELETE policy at all. With
 RLS enabled, an operation with no matching policy is denied — so immutability comes from the
@@ -181,6 +183,13 @@ everything from both client roles first, then grants back exactly the DML each n
 
 **`get_user_role()` is `SECURITY DEFINER`.** It reads `public.profiles`, which is itself
 RLS-protected; without elevation the profiles policies that call it would recurse infinitely.
+
+**RLS with no policy is how `trash` and `invitations` are closed.** Neither table grants a
+client anything, so every read and write goes through a SECURITY DEFINER function that checks
+the role itself. That inverts one thing: inside a DEFINER function `current_user` is the owner,
+so `require_schema_admin()`'s "direct database session" branch would let a caller with no JWT
+through. What stops that is the grant — EXECUTE is revoked from `anon` on all of them, so only
+a signed-in caller, who always has an `auth.uid()`, can reach the check at all.
 
 **Server actions re-check anyway.** A Server Action is a public POST endpoint. Every mutation
 calls `requireSchemaAdmin()` or `requireDataEditor()` before touching anything. The SQL
@@ -252,3 +261,81 @@ a single option.
   in `attributes.sql` strips the very key its predicate matches on.
 - **`--border` and `--input` are different tokens.** `--border` draws decorative separators,
   which WCAG 1.4.11 exempts. `--input` draws control boundaries, which need 3:1.
+
+---
+
+## 8. Trash: deleting never destroys
+
+`ON DELETE CASCADE` makes deleting one category take its whole subtree, every item in it, and
+its version history. That is the plainest break of "never lose a value" in the product, so it is
+now caught at the lowest level available: an `AFTER DELETE` row trigger on `items`, `categories`
+and `schema_versions` copies each deleted row into `public.trash`.
+
+**Why a trigger rather than a "soft delete" flag.** A `deleted_at` column would have to be
+honoured by every read path — the Items tab, search, facets, the dashboard, impact analysis,
+uniqueness checks — and one missed `WHERE` is a bug that shows deleted data to users. A trigger
+leaves the live tables holding only live rows, so no read path changed at all. It also captures
+routes the application does not control: a direct PostgREST `DELETE`, and cascades, which are
+executed as ordinary deletes and fire their triggers.
+
+**Batches.** Rows deleted together must restore together, so each captured row carries a
+`batch`. The first design used `txid_current()` and was wrong in a way a dry run caught: one
+transaction that deletes twice merged unrelated deletions into one entry. The batch now comes
+from a sequence, held in a transaction-local setting, and `start_trash_batch()` clears it so
+`delete_items()` and `delete_category_safely()` each begin one of their own.
+
+**Restoring.** `restore_trash()` is all-or-nothing. Categories go back parents-first under their
+original ids — the ordinary insert triggers run, so a restore that would now break a rule (a
+field key an ancestor has taken since, a slug someone reused) fails with that reason rather than
+half-restoring. Items are reconciled with their category's schema **as it is now**, exactly as
+`move_items()` does it: a value whose field no longer exists returns under `__orphaned`.
+`schema_version` is left as it was, so an item written against an older schema still says so.
+
+**The one-way door.** `purge_trash()` is the second and last path that destroys data (the first
+is the `discard` remediation). SCHEMA_ADMIN, and a separate `confirm` argument.
+
+`TRUNCATE` fires no row triggers, which is why the seed files can replace the catalog without
+filling the trash — and why they truncate `trash` too.
+
+---
+
+## 9. Two people, one record
+
+Last-writer-wins was the old behaviour everywhere, and it loses work silently.
+
+**Items** carry `updated_at` into the save, which matches on it: `UPDATE … WHERE id = $1 AND
+updated_at = $2`. Zero rows means somebody got there first, and the action then reads the row to
+say who. One statement, so there is no window between checking and writing.
+
+**Schemas** cannot use a timestamp: reordering siblings touches `categories.updated_at` without
+changing any schema, and an ancestor's change alters this category's effective schema without
+touching its row. The version number is the honest token — `record_schema_versions()` writes one
+for the category and every descendant — so the editor sends the version it loaded.
+`apply_schema_change()` takes the category's row lock FIRST, then compares: a second save waits
+there, sees the first one's version, and stops with SQLSTATE `PT409`.
+
+Both surface as a choice rather than an error to dismiss. Reloading keeps the editor's draft,
+and saving again re-runs impact analysis against the new schema — where anything the other
+person added that this draft lacks shows up as a removal, which is precisely what that dialog is
+for.
+
+---
+
+## 10. Invitations
+
+An invitation names the role someone lands in and travels as a link. Three properties matter:
+
+- **The token is stored only as SHA-256.** A copy of the table is not a set of working links,
+  and a lost link is replaced rather than looked up.
+- **The role is granted on confirmation, not on signup.** `claim_invitation()` runs from the
+  `auth.users` trigger that fires when `email_confirmed_at` goes from NULL to set, and matches
+  the invitation's address against the account's. Granting at signup would mean anyone holding
+  a leaked link could take the role by typing the invited address into the form. With email
+  confirmation switched off in the Supabase project, the same claim runs at insert instead —
+  the weaker guarantee follows the project's own setting rather than being baked in here.
+- **One open invitation per address**, enforced by a partial unique index, so inviting someone
+  twice replaces the link instead of leaving two that both work.
+
+The first account on an empty instance is still the admin, invitation or not.
+
+---
