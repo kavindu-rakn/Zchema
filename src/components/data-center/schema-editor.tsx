@@ -91,12 +91,18 @@ export function SchemaEditor({
   category,
   chain,
   canEdit,
+  schemaVersion,
   dismissedHints = [],
 }: {
   category: Category;
   /** Ancestors root-first, INCLUDING this category last. */
   chain: Pick<Category, "id" | "name" | "own_fields" | "overrides">[];
   canEdit: boolean;
+  /**
+   * The schema version this editor loaded (0 if none yet). Sent with the
+   * save so a change someone else made meanwhile is not overwritten.
+   */
+  schemaVersion: number;
   /** Onboarding hints this user has already dismissed. */
   dismissedHints?: string[];
 }) {
@@ -343,10 +349,21 @@ export function SchemaEditor({
           own_fields: stripDraft(ownFields),
           overrides,
           remediations,
+          expectedVersion: schemaVersion,
         });
 
         if (!result.ok) {
-          toast.error(result.error);
+          // Someone else versioned this schema first. Reloading keeps the
+          // draft — this editor seeds its state once — and saving again
+          // reviews it against the new schema, where anything they added
+          // that this draft lacks shows up as a removal.
+          toast.error(result.error, {
+            duration: result.code === "conflict" ? Infinity : undefined,
+            action:
+              result.code === "conflict"
+                ? { label: "Reload", onClick: () => router.refresh() }
+                : undefined,
+          });
           resolve(false);
           return;
         }

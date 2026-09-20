@@ -56,6 +56,26 @@ function seedValues(
   return seeded;
 }
 
+/** Where the form keeps an unsaved draft. One place, so callers agree. */
+function draftKeyFor(categoryId: string | undefined, itemId: string | null): string | null {
+  return categoryId ? `zchema:draft:${categoryId}:${itemId ?? "new"}` : null;
+}
+
+/**
+ * Forget an item's unsaved draft — for a caller that has decided the
+ * edits are not wanted, e.g. after choosing someone else's version in a
+ * save conflict. Never throws.
+ */
+export function clearDraft(categoryId: string, itemId: string | null) {
+  const key = draftKeyFor(categoryId, itemId);
+  if (!key || typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(key);
+  } catch {
+    // Nothing to clean up.
+  }
+}
+
 /** A saved draft for this form, or nothing. Never throws. */
 function readDraft(draftKey: string | null, disabled: boolean): Record<string, unknown> {
   if (!draftKey || disabled || typeof window === "undefined") return {};
@@ -80,7 +100,14 @@ export interface DynamicFormProps {
   showProvenance?: boolean;
   /** Group inputs under "Inherited from X" headers. */
   grouped?: boolean;
-  onSubmit?: (data: Record<string, unknown>) => void | Promise<void>;
+  /**
+   * Resolve `false` when the save failed, and the draft is kept — the
+   * form stays filled, and so does storage if the sheet is then closed.
+   * Resolve only once the save has ANSWERED: resolving early (say, as
+   * soon as a transition starts) deletes the draft of a save that may
+   * yet fail.
+   */
+  onSubmit?: (data: Record<string, unknown>) => boolean | void | Promise<boolean | void>;
   onCancel?: () => void;
   onDirtyChange?: (dirty: boolean) => void;
   submitLabel?: string;
@@ -108,7 +135,7 @@ export function DynamicForm({
   onRestoreOrphan,
   onDiscardOrphan,
 }: DynamicFormProps) {
-  const draftKey = categoryId ? `zchema:draft:${categoryId}:${itemId ?? "new"}` : null;
+  const draftKey = draftKeyFor(categoryId, itemId);
   const incomingBaseline = useMemo(() => JSON.stringify(initialData ?? {}), [initialData]);
 
   // An interrupted draft is folded into the first values, so an accidental
@@ -180,7 +207,8 @@ export function DynamicForm({
     setSubmitted(true);
     if (Object.keys(errors).length > 0) return;
 
-    await onSubmit?.(normaliseForSave(schema, values));
+    const saved = await onSubmit?.(normaliseForSave(schema, values));
+    if (saved === false) return;
 
     if (draftKey) {
       try {

@@ -67,25 +67,35 @@ export interface StaleItems {
  * was written against v3 and no remediation has needed to visit it
  * since. Counting them is the honest answer to "is my data current?".
  */
+/**
+ * The category's latest recorded schema version, or 0 before its first.
+ * The schema editor sends this back with a save, so the database can
+ * refuse one that would overwrite a change made in the meantime.
+ */
+export async function getCurrentSchemaVersion(categoryId: string): Promise<number> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("schema_versions")
+    .select("version")
+    .eq("category_id", categoryId)
+    .order("version", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(`Could not read the current version: ${error.message}`);
+  return (data?.version as number | undefined) ?? 0;
+}
+
 export async function getStaleItems(categoryId: string): Promise<StaleItems> {
   const supabase = await createClient();
 
-  const [{ data: latest, error: versionError }, { data: rows, error: itemsError }] =
-    await Promise.all([
-      supabase
-        .from("schema_versions")
-        .select("version")
-        .eq("category_id", categoryId)
-        .order("version", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      supabase.from("items").select("schema_version").eq("category_id", categoryId),
-    ]);
+  const [currentVersion, { data: rows, error: itemsError }] = await Promise.all([
+    getCurrentSchemaVersion(categoryId),
+    supabase.from("items").select("schema_version").eq("category_id", categoryId),
+  ]);
 
-  if (versionError) throw new Error(`Could not read the current version: ${versionError.message}`);
   if (itemsError) throw new Error(`Could not read item versions: ${itemsError.message}`);
 
-  const currentVersion = (latest?.version as number | undefined) ?? 0;
   const versions = ((rows ?? []) as { schema_version: number }[]).map((row) => row.schema_version);
   const stale = versions.filter((version) => version < currentVersion);
 

@@ -18,6 +18,7 @@ import { createClient } from "@/utils/supabase/server";
 import { requireDataEditor, requireSchemaAdmin } from "@/lib/auth";
 import { actionError } from "@/lib/action-result";
 import { ORPHAN_KEY, isBlank, normaliseForSave, validateItemData } from "@/lib/items";
+import { timeAgo } from "@/lib/time";
 import type { ActionResult, EffectiveField, SchemaField } from "@/lib/types";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
@@ -93,10 +94,21 @@ export async function createItem(
   }
 }
 
+/**
+ * Save an item's data.
+ *
+ * `expectedUpdatedAt` is the item's updated_at as the form loaded it.
+ * The UPDATE matches on it too, so if anyone saved the item since — or
+ * a schema change rewrote it — nothing is written and the caller hears
+ * who changed it. Without this, the later save silently replaced the
+ * earlier one, including values a schema change had just moved to
+ * __orphaned. Pass null only to overwrite deliberately.
+ */
 export async function updateItem(
   itemId: string,
   categoryId: string,
-  data: Record<string, unknown>
+  data: Record<string, unknown>,
+  expectedUpdatedAt: string | null
 ): Promise<ActionResult> {
   try {
     await requireDataEditor();
@@ -110,18 +122,57 @@ export async function updateItem(
     const clean = normaliseForSave(schema, data);
     const version = await currentSchemaVersion(supabase, categoryId);
 
-    const { error } = await supabase
+    let update = supabase
       .from("items")
       .update({ data: clean, schema_version: version })
       .eq("id", itemId);
+    if (expectedUpdatedAt) update = update.eq("updated_at", expectedUpdatedAt);
 
+    const { data: written, error } = await update.select("id");
     if (error) throw new Error(error.message);
+
+    if (!written || written.length === 0) {
+      const conflict = await describeItemConflict(supabase, itemId);
+      // A deleted item is not a conflict to resolve — there is nothing
+      // left to overwrite — so it is reported as a plain failure.
+      return conflict.gone
+        ? { ok: false, error: conflict.message }
+        : { ok: false, code: "conflict", error: conflict.message };
+    }
 
     revalidateCategory(categoryId);
     return { ok: true, data: null };
   } catch (error) {
     return actionError(error, "Could not update the item.");
   }
+}
+
+/** Why a save matched no row: someone changed the item, or deleted it. */
+async function describeItemConflict(
+  supabase: Supabase,
+  itemId: string
+): Promise<{ message: string; gone: boolean }> {
+  const { data: current } = await supabase
+    .from("items")
+    .select("updated_at, updated_by")
+    .eq("id", itemId)
+    .maybeSingle();
+
+  if (!current) {
+    return {
+      gone: true,
+      message: "This item was deleted while you were editing it. It is in the trash if you need it back.",
+    };
+  }
+
+  const { data: email } = current.updated_by
+    ? await supabase.rpc("member_email", { p_user_id: current.updated_by })
+    : { data: null };
+  const who = typeof email === "string" && email ? email : "Someone";
+  return {
+    gone: false,
+    message: `${who} changed this item ${timeAgo(current.updated_at as string)}, while you were editing it.`,
+  };
 }
 
 /**

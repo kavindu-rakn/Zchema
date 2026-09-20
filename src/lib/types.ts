@@ -310,4 +310,13 @@ export interface SchemaApplyResult {
  */
 export type ActionResult<T = null> =
   | { ok: true; data: T }
-  | { ok: false; error: string };
+  | {
+      ok: false;
+      error: string;
+      /**
+       * "conflict": someone else changed the record since it was loaded.
+       * The UI offers a reload (or an explicit overwrite) instead of
+       * just showing the message.
+       */
+      code?: "conflict";
+    };
