@@ -37,6 +37,7 @@ const FEATURE_FILES = [
   "import",
   "onboarding",
   "trash",
+  "invites",
 ];
 
 const read = (path: string) => readFileSync(path, "utf8").replace(/\r/g, "");

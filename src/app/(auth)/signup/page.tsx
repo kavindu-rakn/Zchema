@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { use, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/utils/supabase/client'
 import { MIN_PASSWORD_LENGTH } from '@/lib/password'
@@ -10,8 +10,20 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
 
-export default function SignupPage() {
-  const [email, setEmail] = useState('')
+// An invite link is /signup?invite=<token>&email=<address>. The token
+// rides along in the account's metadata; the database grants the role
+// it names once the address is confirmed, and only for that address —
+// see supabase/invites.sql.
+export default function SignupPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ invite?: string | string[]; email?: string | string[] }>
+}) {
+  const params = use(searchParams)
+  const inviteToken = typeof params.invite === 'string' ? params.invite : null
+  const invitedEmail = typeof params.email === 'string' ? params.email : ''
+
+  const [email, setEmail] = useState(invitedEmail)
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -30,6 +42,7 @@ export default function SignupPage() {
         password,
         options: {
           emailRedirectTo: `${location.origin}/auth/callback`,
+          data: inviteToken ? { invite_token: inviteToken } : undefined,
         },
       })
 
@@ -48,9 +61,13 @@ export default function SignupPage() {
   return (
     <Card className="border-border bg-card/50 backdrop-blur-xl shadow-2xl">
       <CardHeader className="space-y-1">
-        <CardTitle className="text-2xl font-medium">Create an account</CardTitle>
+        <CardTitle className="text-2xl font-medium">
+          {inviteToken ? 'Accept your invitation' : 'Create an account'}
+        </CardTitle>
         <CardDescription className="text-muted-foreground">
-          Enter your details below to create your account
+          {inviteToken
+            ? `Sign up as ${invitedEmail || 'the invited address'} — the invitation is for that address, and the role comes with it once you confirm the email.`
+            : 'Enter your details below to create your account'}
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSignup}>

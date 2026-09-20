@@ -191,6 +191,40 @@ CREATE INDEX IF NOT EXISTS idx_trash_row ON public.trash (row_id);
 
 
 -- ============================================================
+-- 6c. Invitations — how a teammate gets in with a role
+-- ------------------------------------------------------------
+-- Without this, joining meant finding the signup page unaided and then
+-- waiting for an admin to notice and change your role. An invitation
+-- names the role up front and travels as a link.
+--
+-- Only the SHA-256 of the link's token is stored, so a copy of this
+-- table is not a set of working invitations. The role is granted when
+-- the invited address is confirmed (schema.sql §9c), never merely
+-- because someone typed that address.
+--
+-- Reached only through supabase/invites.sql: RLS on, no policies.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.invitations (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email       TEXT NOT NULL,          -- always stored lower-cased
+  role        TEXT NOT NULL
+              CHECK (role IN ('SCHEMA_ADMIN', 'DATA_EDITOR', 'VIEWER')),
+  token_hash  TEXT NOT NULL,
+  invited_by  UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at  TIMESTAMPTZ NOT NULL DEFAULT now() + INTERVAL '7 days',
+  accepted_at TIMESTAMPTZ,
+  accepted_by UUID REFERENCES auth.users(id) ON DELETE SET NULL
+);
+
+-- One open invitation per address: a second one replaces the first,
+-- rather than leaving two links that both work.
+CREATE UNIQUE INDEX IF NOT EXISTS unique_open_invitation
+  ON public.invitations (email) WHERE accepted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_invitations_token ON public.invitations (token_hash);
+
+
+-- ============================================================
 -- 7. Indexes
 -- ============================================================
 -- GIN index for fast JSONB containment / key-exists queries on items.
@@ -353,6 +387,17 @@ BEGIN
     NEW.email,
     CASE WHEN is_first_user THEN 'SCHEMA_ADMIN' ELSE 'VIEWER' END
   );
+
+  -- An invited signup gets the role its invitation names — but only
+  -- once the address is confirmed, which is usually later, on the
+  -- UPDATE that sets email_confirmed_at (§9c). This call covers the
+  -- case where it is already confirmed at insert, i.e. a project with
+  -- email confirmation switched off. Never for the first user: they
+  -- are the admin regardless.
+  IF NOT is_first_user THEN
+    PERFORM public.claim_invitation(NEW.id);
+  END IF;
+
   RETURN NEW;
 END;
 $$;
@@ -361,6 +406,35 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+
+-- ============================================================
+-- 9c. An invitation is claimed when the address is confirmed
+-- ------------------------------------------------------------
+-- The role must not hinge on someone typing an email address. Anyone
+-- holding a leaked invite link could sign up as the invited address, so
+-- the role is granted only once GoTrue has confirmed that address —
+-- this trigger — or, with confirmation switched off, at insert (§9).
+-- claim_invitation() lives in supabase/invites.sql.
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.handle_user_confirmed()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  PERFORM public.claim_invitation(NEW.id);
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_auth_user_confirmed ON auth.users;
+CREATE TRIGGER on_auth_user_confirmed
+  AFTER UPDATE OF email_confirmed_at ON auth.users
+  FOR EACH ROW
+  WHEN (OLD.email_confirmed_at IS NULL AND NEW.email_confirmed_at IS NOT NULL)
+  EXECUTE FUNCTION public.handle_user_confirmed();
 
 
 -- ============================================================
@@ -493,7 +567,8 @@ CREATE TRIGGER ensure_role_protection_insert
 -- (Verified against the live project on 2026-09-18 before relying on it:
 -- with EXECUTE revoked from `authenticated`, an insert by `authenticated`
 -- still fired the trigger. Getting this wrong would break every signup.)
-REVOKE EXECUTE ON FUNCTION public.handle_new_user()     FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.handle_new_user()      FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.handle_user_confirmed() FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.protect_role_update() FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.protect_role_insert() FROM PUBLIC, anon, authenticated;
 

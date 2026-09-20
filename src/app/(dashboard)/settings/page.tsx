@@ -4,9 +4,11 @@ import { Calendar, Mail, Shield } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DensityToggle } from "@/components/settings/density-toggle";
 import { UsersTable } from "@/components/settings/users-table";
+import { InvitePanel } from "@/components/settings/invite-panel";
 import { SignOutEverywhere } from "@/components/settings/sign-out-everywhere";
 import { getCurrentProfile } from "@/lib/auth";
 import { getProfiles } from "@/lib/data/profiles";
+import { listInvitations } from "@/lib/data/invites";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +32,9 @@ export default async function SettingsPage() {
   const role = ROLE_LABELS[profile.role] ?? { label: profile.role, description: "" };
 
   // RLS returns only your own row to a non-admin, so this stays cheap.
-  const profiles = isAdmin ? await getProfiles() : [];
+  const [profiles, invitations] = isAdmin
+    ? await Promise.all([getProfiles(), listInvitations()])
+    : [[], []];
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 p-6">
@@ -111,6 +115,23 @@ export default async function SettingsPage() {
           </CardHeader>
           <CardContent>
             <UsersTable profiles={profiles} currentUserId={profile.id} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Invitations (admin only) ────────────────────────── */}
+      {isAdmin && (
+        <Card className="border-border/50 bg-card">
+          <CardHeader>
+            <CardTitle className="text-base text-foreground">Invitations</CardTitle>
+            <CardDescription className="text-muted-foreground">
+              An invitation is a link that carries the role with it. Zchema sends no email —
+              copy the link and send it however you like. The role arrives once they confirm
+              their address, so the link alone is not enough.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <InvitePanel invitations={invitations} />
           </CardContent>
         </Card>
       )}

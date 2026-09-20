@@ -205,6 +205,19 @@ export interface Item {
   updated_by?: string | null;
 }
 
+/** A pending or spent invitation. Shaped by list_invitations(). */
+export interface Invitation {
+  id: string;
+  email: string;
+  role: UserRole;
+  created_at: string;
+  expires_at: string;
+  accepted_at: string | null;
+  /** Email of the admin who created it, or null. */
+  invited_by: string | null;
+  status: "open" | "expired" | "accepted";
+}
+
 /**
  * One entry in the trash: everything one deletion took, restored as a
  * unit. Shaped by list_trash() in supabase/trash.sql.
