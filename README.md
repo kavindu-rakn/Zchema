@@ -223,9 +223,10 @@ confirmation: the `discard` remediation and emptying a trash entry.
 
 **A save that would overwrite someone else's is refused.** An item save carries the `updated_at`
 it loaded; a schema save carries the version the editor loaded, and `apply_schema_change()`
-locks the category before comparing, so two saves cannot both pass the check. The second person
-is told who changed it and chooses: take their version, or overwrite deliberately. Silent
-last-writer-wins is the one outcome not on offer.
+locks the category before comparing, so two saves cannot both pass the check. A bulk edit
+carries one token per selected row, writes the rows that are still as the user saw them, and
+says how many it left alone. The second person is told who changed it and chooses: take their
+version, or overwrite deliberately. Silent last-writer-wins is the one outcome not on offer.
 
 **Server actions re-check the role.** A Server Action is a public POST endpoint. RLS guards the
 tables underneath, but every mutation also checks the caller's role server-side, because

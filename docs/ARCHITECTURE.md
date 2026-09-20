@@ -314,10 +314,18 @@ for the category and every descendant — so the editor sends the version it loa
 `apply_schema_change()` takes the category's row lock FIRST, then compares: a second save waits
 there, sees the first one's version, and stops with SQLSTATE `PT409`.
 
+**A bulk edit** carries one token per selected row. `set_item_field()` is a single statement
+whose UPDATE joins the selection to the rows and matches each `updated_at`, so rows that moved
+on since the user ticked them are simply not matched; the function returns their ids and the
+caller reports them. The rest of the selection is still written — refusing the whole batch
+because one row changed would be its own kind of data loss. Each row is also stamped with its
+OWN category's current version, because a selection scoped across a subtree spans several.
+
 Both surface as a choice rather than an error to dismiss. Reloading keeps the editor's draft,
 and saving again re-runs impact analysis against the new schema — where anything the other
 person added that this draft lacks shows up as a removal, which is precisely what that dialog is
-for.
+for. For a bulk edit the second chance is "Apply to those too", which re-runs the same write
+with the check turned off.
 
 ---
 

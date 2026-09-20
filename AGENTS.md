@@ -73,8 +73,18 @@ differ, for the history timeline; its severity is always `"safe"` and it does **
 **A save that would overwrite someone else's is refused, not merged.** An item save sends the
 `updated_at` it loaded and the UPDATE matches on it; a schema save sends the version the editor
 loaded and `apply_schema_change()` locks the category, compares, and raises SQLSTATE `PT409`
-(HTTP 409 through PostgREST). Both surface as a choice — reload, or overwrite deliberately —
-never as a silent last-writer-wins. Anything new that rewrites a whole record needs the same.
+(HTTP 409 through PostgREST). A bulk edit sends one `updated_at` per selected row and
+`set_item_field()` matches each one, writing the rest and naming what it skipped. All three
+surface as a choice — reload, or overwrite deliberately — never as a silent last-writer-wins.
+Anything new that rewrites a whole record needs the same.
+
+**Unsaved work belongs in sessionStorage, through `src/lib/drafts.ts`.** Every accessor there is
+total: storage can be absent (the server), blocked, or full, and an editor must keep working in
+all three cases. `useUnsavedWarning` covers a reload or a closed tab; the App Router has no
+route-change guard, so a draft is what covers navigating away inside the app. An item form folds
+its draft straight back into the fields — same item, fields on screen. The schema editor and the
+blueprint builder **offer** theirs instead (`useDraft`), because a days-old draft silently
+presented as the saved state is how someone applies a change they never meant to.
 
 **Authorship comes from the session, not the payload.** `items.created_by` / `updated_by` are
 stamped by `stamp_item_authors()`; a client that sends its own values has them overwritten. The
