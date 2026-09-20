@@ -207,59 +207,93 @@ export async function deleteItem(
   return deleteItems([itemId], categoryId);
 }
 
+/** An item and the `updated_at` it carried when the user selected it. */
+export interface ItemToken {
+  id: string;
+  /** null skips the check, which is the deliberate overwrite. */
+  updatedAt: string | null;
+}
+
 /**
  * Set one field to one value across many items.
  *
  * The fastest way out of the mess a newly-required field creates —
- * Phase 5's impact dialog links straight here.
+ * the impact dialog links straight here.
+ *
+ * Two things the row-at-a-time version got wrong. It sent one UPDATE
+ * per item, so a 200-item selection was 201 round trips; and it read
+ * each row, edited it in memory and wrote the whole thing back, which
+ * quietly discarded anything saved in between. Both are now one call
+ * to set_item_field() (functions.sql §12), which matches each row on
+ * the `updated_at` the user was looking at and reports the ones that
+ * had moved on instead of trampling them.
+ *
+ * `force` re-runs the same write without that check, for a caller who
+ * has been told what it would overwrite and said yes anyway.
  */
 export async function setFieldValue(
-  itemIds: string[],
+  items: ItemToken[],
   categoryId: string,
   key: string,
-  value: unknown
-): Promise<ActionResult<{ updated: number }>> {
+  value: unknown,
+  force = false
+): Promise<ActionResult<{ updated: number; conflicted: string[] }>> {
   try {
     await requireDataEditor();
-    if (itemIds.length === 0) return { ok: true, data: { updated: 0 } };
+    if (items.length === 0) return { ok: true, data: { updated: 0, conflicted: [] } };
 
     const supabase = await createClient();
-    const schema = await fetchSchema(supabase, categoryId);
 
-    const field = schema.find((candidate) => candidate.key === key);
-    if (!field) {
-      return { ok: false, error: `“${key}” is not a field on this category.` };
-    }
-
-    // Validate the single value the same way the form would.
-    const invalid = firstError(validateItemData([field], { [key]: value }));
-    if (invalid) return { ok: false, error: invalid };
-
+    // A subtree selection spans several categories, each with its own
+    // effective schema. The value has to be valid in every one of
+    // them, so they are all fetched — one per category, never per item.
     const { data: rows, error: readError } = await supabase
       .from("items")
-      .select("id, data")
-      .in("id", itemIds);
+      .select("category_id")
+      .in(
+        "id",
+        items.map((item) => item.id)
+      );
     if (readError) throw new Error(readError.message);
 
-    const cleanValue = normaliseForSave([field], { [key]: value })[key];
-    const version = await currentSchemaVersion(supabase, categoryId);
+    const categoryIds = [
+      ...new Set([...((rows ?? []) as { category_id: string }[]).map((r) => r.category_id)]),
+    ];
+    const schemas = await Promise.all(
+      (categoryIds.length > 0 ? categoryIds : [categoryId]).map((id) => fetchSchema(supabase, id))
+    );
 
-    let updated = 0;
-    for (const row of (rows ?? []) as { id: string; data: Record<string, unknown> }[]) {
-      const next = { ...row.data };
-      if (isBlank(cleanValue)) delete next[key];
-      else next[key] = cleanValue;
-
-      const { error } = await supabase
-        .from("items")
-        .update({ data: next, schema_version: version })
-        .eq("id", row.id);
-      if (error) throw new Error(error.message);
-      updated += 1;
+    const fields: EffectiveField[] = [];
+    for (const schema of schemas) {
+      const field = schema.find((candidate) => candidate.key === key);
+      if (!field) {
+        return { ok: false, error: `“${key}” is not a field on every selected item’s category.` };
+      }
+      const invalid = firstError(validateItemData([field], { [key]: value }));
+      if (invalid) return { ok: false, error: invalid };
+      fields.push(field);
     }
 
+    // A child may override a field's label or options but never its
+    // type, and normalisation is driven by type alone — so any of the
+    // resolved fields normalises the value the same way.
+    const cleanValue = normaliseForSave([fields[0]], { [key]: value })[key];
+
+    const { data, error } = await supabase.rpc("set_item_field", {
+      p_items: items.map((item) => ({ id: item.id, updated_at: item.updatedAt })),
+      p_key: key,
+      // A JSON null clears the key rather than storing an empty value.
+      p_value: isBlank(cleanValue) ? null : cleanValue,
+      p_force: force,
+    });
+    if (error) throw new Error(error.message);
+
+    const result = data as { updated: number; conflicted: string[] };
     revalidateCategory(categoryId);
-    return { ok: true, data: { updated } };
+    return {
+      ok: true,
+      data: { updated: result.updated, conflicted: result.conflicted ?? [] },
+    };
   } catch (error) {
     return actionError(error, "Could not update those items.");
   }

@@ -49,12 +49,19 @@ function flatten(nodes: CategoryNode[], depth = 0): { node: CategoryNode; depth:
 
 export function BulkActionsBar({
   selected,
+  updatedAt,
   categoryId,
   schema,
   tree,
   onClear,
 }: {
   selected: string[];
+  /**
+   * Each selected item's `updated_at` as this page rendered it. Sent
+   * with a bulk edit so an item someone has changed since is skipped
+   * rather than overwritten — the same token a single item save uses.
+   */
+  updatedAt: Record<string, string>;
   categoryId: string;
   schema: EffectiveField[];
   tree: CategoryNode[];
@@ -123,14 +130,71 @@ export function BulkActionsBar({
       router.refresh();
     });
 
-  const runSetValue = (data: Record<string, unknown>) =>
+  /**
+   * Apply the value to the items the caller has been warned about,
+   * this time without the check. Reached only from the toast below,
+   * so overwriting someone else's edit is always a second decision.
+   */
+  const forceSetValue = (ids: string[], key: string, value: unknown) =>
     startTransition(async () => {
-      const result = await setFieldValue(selected, categoryId, fieldKey, data[fieldKey]);
+      const result = await setFieldValue(
+        ids.map((id) => ({ id, updatedAt: null })),
+        categoryId,
+        key,
+        value,
+        true
+      );
       if (!result.ok) {
         toast.error(result.error);
         return;
       }
-      toast.success(`Updated ${result.data.updated} item${result.data.updated === 1 ? "" : "s"}`);
+      toast.success(
+        result.data.updated > 0
+          ? `Updated ${result.data.updated} more`
+          : "Nothing left to update — those items are gone."
+      );
+      router.refresh();
+    });
+
+  const runSetValue = (data: Record<string, unknown>) =>
+    startTransition(async () => {
+      // Read once: the dialog may be closed and reopened on another
+      // field before the toast action below is clicked.
+      const key = fieldKey;
+      const value = data[key];
+      const result = await setFieldValue(
+        selected.map((id) => ({ id, updatedAt: updatedAt[id] ?? null })),
+        categoryId,
+        key,
+        value
+      );
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+
+      const { updated, conflicted } = result.data;
+      if (conflicted.length === 0) {
+        toast.success(`Updated ${updated} item${updated === 1 ? "" : "s"}`);
+      } else {
+        // Never a silent last-writer-wins: say how many were left
+        // alone, and make overwriting them a separate click.
+        toast.warning(`Updated ${updated} of ${selected.length}`, {
+          description: `${conflicted.length} ${
+            conflicted.length === 1 ? "item was" : "items were"
+          } changed or deleted since you selected ${
+            conflicted.length === 1 ? "it" : "them"
+          }, so ${conflicted.length === 1 ? "it was" : "they were"} left as ${
+            conflicted.length === 1 ? "it is" : "they are"
+          }.`,
+          duration: Infinity,
+          action: {
+            label: "Apply to those too",
+            onClick: () => forceSetValue(conflicted, key, value),
+          },
+        });
+      }
+
       close();
       onClear();
       router.refresh();
