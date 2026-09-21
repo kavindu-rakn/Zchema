@@ -983,17 +983,31 @@ $$;
 --   discard   hard-delete the key. Requires "confirm": true. Never a default.
 --   leave     do nothing; affected items simply read as incomplete
 --
+-- p_expected_version: the schema version the editor started from. Two
+--   admins editing one schema used to be last-writer-wins, and the
+--   first one's change silently vanished. If the category has been
+--   versioned since — directly, or by a change to an ancestor, which
+--   versions every descendant — this refuses with SQLSTATE PT409,
+--   which PostgREST sends as HTTP 409 so the UI can offer a reload.
+--   NULL skips the check (rollback and other internal callers).
+--
 -- Returns { version, items_updated, items_orphaned, items_incomplete }.
 -- ============================================================
+
+-- p_expected_version added a parameter: drop the old signature, or every
+-- PostgREST call to apply_schema_change becomes ambiguous.
+DROP FUNCTION IF EXISTS public.apply_schema_change(UUID, JSONB, JSONB, JSONB, UUID, JSONB);
+
 CREATE OR REPLACE FUNCTION public.apply_schema_change(
-  p_category_id    UUID,
-  p_new_own_fields JSONB,
-  p_new_overrides  JSONB,
-  p_remediations   JSONB DEFAULT '{}'::jsonb,
-  p_changed_by     UUID  DEFAULT NULL,
+  p_category_id      UUID,
+  p_new_own_fields   JSONB,
+  p_new_overrides    JSONB,
+  p_remediations     JSONB DEFAULT '{}'::jsonb,
+  p_changed_by       UUID  DEFAULT NULL,
   -- Prepended to change_summary when the caller is not a plain edit.
   -- rollback_schema_version() uses it to mark its forward version.
-  p_origin         JSONB DEFAULT NULL
+  p_origin           JSONB DEFAULT NULL,
+  p_expected_version INT   DEFAULT NULL
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -1009,8 +1023,25 @@ DECLARE
   orphaned     UUID[];
   target_ver   INT;
   n_incomplete INT := 0;
+  current_ver  INT;
 BEGIN
   PERFORM public.require_schema_admin();
+
+  -- ── 0. Nobody changed this schema since the editor loaded it ──
+  -- The row lock comes first, so two saves cannot both pass the check
+  -- and then both apply: the second waits here until the first commits,
+  -- then sees its version and stops.
+  PERFORM 1 FROM public.categories WHERE id = p_category_id FOR UPDATE;
+  IF p_expected_version IS NOT NULL THEN
+    SELECT COALESCE(max(v.version), 0) INTO current_ver
+    FROM public.schema_versions v WHERE v.category_id = p_category_id;
+    IF current_ver <> p_expected_version THEN
+      RAISE EXCEPTION 'This schema changed while you were editing it: it is at v% now, and you started from v%.',
+        current_ver, p_expected_version
+        USING ERRCODE = 'PT409',
+              HINT = 'Reload to see the change. Your draft stays; saving again reviews it against the new schema.';
+    END IF;
+  END IF;
 
   -- ── 1. Re-analyse INSIDE the transaction ──────────────────
   -- The dialog's analysis may be seconds or minutes old, and the tree
@@ -1575,7 +1606,12 @@ $$;
 --
 --   false → plain cascade.
 --
--- Returns { deleted_categories, moved_items, orphaned_values, deleted_items }.
+-- Either way nothing is destroyed: every deleted category, item and
+-- schema version lands in the trash as one batch (trash.sql), which
+-- restore_trash() puts back.
+--
+-- Returns { deleted_categories, moved_items, orphaned_values,
+--           deleted_items, trash_batch }.
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.delete_category_safely(
   p_category_id          UUID,
@@ -1597,6 +1633,8 @@ DECLARE
   move_result  JSONB := jsonb_build_object('moved', 0, 'carried', 0, 'orphaned', 0);
 BEGIN
   PERFORM public.require_schema_admin();
+  -- This deletion is one trash entry of its own (trash.sql).
+  PERFORM public.start_trash_batch();
 
   SELECT c.parent_id INTO v_parent_id FROM public.categories c WHERE c.id = p_category_id;
   IF NOT FOUND THEN
@@ -1630,7 +1668,8 @@ BEGIN
     'deleted_categories', n_categories,
     'moved_items',        n_moved,
     'orphaned_values',    COALESCE((move_result->>'orphaned')::int, 0),
-    'deleted_items',      n_items - n_moved
+    'deleted_items',      n_items - n_moved,
+    'trash_batch',        public.current_trash_batch()
   );
 END;
 $$;

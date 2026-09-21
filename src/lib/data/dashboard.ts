@@ -6,6 +6,7 @@
 
 import { createClient } from "@/utils/supabase/server";
 import { getCategoryTreeFlat } from "@/lib/data/categories";
+import { itemTitle } from "@/lib/items";
 import type { CategoryNode } from "@/lib/types";
 
 export interface DashboardShape {
@@ -210,7 +211,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       id: item.id,
       at: item.created_at,
       title: nameOf(item.category_id),
-      detail: `Item added${labelForItem(item.data) ? ` — ${labelForItem(item.data)}` : ""}`,
+      detail: `Item added${itemTitle(item.data) ? ` — ${itemTitle(item.data)}` : ""}`,
       href: `/data-center/${item.category_id}?tab=items`,
     })),
   ]
@@ -230,13 +231,4 @@ export async function getDashboardData(): Promise<DashboardData> {
     activity,
     recentCategories,
   };
-}
-
-/** Best-effort human label for an item, for activity rows. */
-function labelForItem(data: Record<string, unknown>): string | null {
-  for (const key of ["name", "title", "model", "sku", "brand", "author"]) {
-    const value = data?.[key];
-    if (typeof value === "string" && value.trim()) return value;
-  }
-  return null;
 }

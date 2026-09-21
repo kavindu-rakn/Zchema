@@ -200,6 +200,44 @@ export interface Item {
   schema_version: number;
   created_at: string;
   updated_at: string;
+  /** Stamped by the database from the session; null for older rows. */
+  created_by?: string | null;
+  updated_by?: string | null;
+}
+
+/** A pending or spent invitation. Shaped by list_invitations(). */
+export interface Invitation {
+  id: string;
+  email: string;
+  role: UserRole;
+  created_at: string;
+  expires_at: string;
+  accepted_at: string | null;
+  /** Email of the admin who created it, or null. */
+  invited_by: string | null;
+  status: "open" | "expired" | "accepted";
+}
+
+/**
+ * One entry in the trash: everything one deletion took, restored as a
+ * unit. Shaped by list_trash() in supabase/trash.sql.
+ */
+export interface TrashEntry {
+  /** Opaque id; a string because a bigint does not survive JSON → number. */
+  batch: string;
+  deleted_at: string;
+  /** Email of whoever deleted it, or null if unknown. */
+  deleted_by: string | null;
+  categories: number;
+  items: number;
+  /** Categories whose parent is not in the entry — "Laptops", not its children. */
+  top_categories: string[];
+  /** Up to three items' data, to label an items-only entry. */
+  item_samples: Record<string, unknown>[];
+  /** Where the items lived. */
+  home_categories: string[];
+  /** Why it cannot be restored yet, or null. */
+  blocked_by: string | null;
 }
 
 export interface SchemaVersion {
@@ -285,4 +323,13 @@ export interface SchemaApplyResult {
  */
 export type ActionResult<T = null> =
   | { ok: true; data: T }
-  | { ok: false; error: string };
+  | {
+      ok: false;
+      error: string;
+      /**
+       * "conflict": someone else changed the record since it was loaded.
+       * The UI offers a reload (or an explicit overwrite) instead of
+       * just showing the message.
+       */
+      code?: "conflict";
+    };

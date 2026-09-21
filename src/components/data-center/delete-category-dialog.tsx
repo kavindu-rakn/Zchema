@@ -1,15 +1,17 @@
 "use client";
 
 // ── Delete a category ────────────────────────────────────────
-// `ON DELETE CASCADE` means deleting Electronics destroys every
-// category beneath it and all of their items. Doing that behind a
-// plain confirm() is the single most dangerous thing this app can do.
+// `ON DELETE CASCADE` means deleting Electronics takes every category
+// beneath it and all of their items. Nothing is destroyed — the whole
+// subtree lands in the trash as one entry, and Undo is offered at once —
+// but it still vanishes for everyone until someone restores it, and a
+// restore can be refused if the tree has moved on in the meantime.
 //
-// So the destructive path is never the only path: when the category
-// has a parent, its items can be RESCUED there first — reconciled
-// against the parent's schema by move_items(), with anything that does
-// not fit preserved as orphaned data rather than deleted. Both options
-// run in one transaction inside delete_category_safely().
+// So the cascade is never the only path: when the category has a
+// parent, its items can be RESCUED there first — reconciled against the
+// parent's schema by move_items(), with anything that does not fit
+// preserved as orphaned data. Both options run in one transaction
+// inside delete_category_safely().
 //
 // The counts are stated before the input, the consequence of each
 // choice is spelled out, and the name still has to be typed.
@@ -28,6 +30,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { toastTrashed } from "@/components/trash/trashed-toast";
 import {
   deleteCategory,
   previewCategoryDelete,
@@ -105,15 +108,18 @@ export function DeleteCategoryDialog({
         return;
       }
 
-      const { moved_items, orphaned_values, deleted_items } = result.data;
-      const parts: string[] = [];
-      if (moved_items) parts.push(`${moved_items} item${moved_items === 1 ? "" : "s"} moved to ${preview?.parent_name}`);
-      if (orphaned_values) parts.push(`${orphaned_values} value${orphaned_values === 1 ? "" : "s"} kept as orphaned data`);
-      if (deleted_items) parts.push(`${deleted_items} item${deleted_items === 1 ? "" : "s"} deleted`);
-
-      toast.success(`Deleted “${categoryName}”`, {
-        description: parts.length > 0 ? parts.join(" · ") : undefined,
-      });
+      const { moved_items, orphaned_values, trash_batch } = result.data;
+      if (moved_items) {
+        toast.success(
+          `${moved_items} item${moved_items === 1 ? "" : "s"} moved to ${preview?.parent_name}`,
+          {
+            description: orphaned_values
+              ? `${orphaned_values} value${orphaned_values === 1 ? "" : "s"} kept as orphaned data`
+              : undefined,
+          }
+        );
+      }
+      toastTrashed(`Moved “${categoryName}” to the trash`, trash_batch, () => router.refresh());
       onOpenChange(false);
       router.refresh();
       router.push(redirectTo);
@@ -125,14 +131,16 @@ export function DeleteCategoryDialog({
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Delete “{categoryName}”?</DialogTitle>
-          <DialogDescription>This cannot be undone.</DialogDescription>
+          <DialogDescription>
+            It goes to the trash with everything in it. A SCHEMA_ADMIN can restore it from there.
+          </DialogDescription>
         </DialogHeader>
 
         {cascades ? (
           <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
             <div className="space-y-1 text-foreground">
-              <p>Deleting this category removes:</p>
+              <p>Deleting this category takes with it:</p>
               <ul className="list-inside list-disc text-muted-foreground">
                 {descendantCount > 0 && (
                   <li>
@@ -227,8 +235,8 @@ export function DeleteCategoryDialog({
                     Delete them with the category
                   </span>
                   <span className="block text-xs text-muted-foreground">
-                    All {subtreeItemCount} item{subtreeItemCount === 1 ? "" : "s"} and every value
-                    in them are destroyed permanently.
+                    All {subtreeItemCount} item{subtreeItemCount === 1 ? "" : "s"} go to the trash
+                    with it, and come back only if the category is restored.
                   </span>
                 </span>
               </label>
@@ -238,8 +246,8 @@ export function DeleteCategoryDialog({
 
         {!canRescue && subtreeItemCount > 0 && !loading && (
           <p className="text-sm text-muted-foreground">
-            This is a root category, so there is no parent to move its items to. They will be
-            deleted with it.
+            This is a root category, so there is no parent to move its items to. They go to the
+            trash with it.
           </p>
         )}
 
@@ -281,7 +289,7 @@ export function DeleteCategoryDialog({
               ? "Deleting…"
               : moving
                 ? "Move items and delete"
-                : "Delete permanently"}
+                : "Move to trash"}
           </Button>
         </div>
       </DialogContent>

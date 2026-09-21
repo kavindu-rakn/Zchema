@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/dialog";
 import { rollbackSchemaVersion } from "@/app/(dashboard)/data-center/actions";
 import { diffSchemas } from "@/lib/schema";
+import { timeAgo } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import type { ChangeSeverity, EffectiveField, SchemaChange, SchemaVersion } from "@/lib/types";
 
@@ -41,26 +42,6 @@ export interface VersionEntry extends SchemaVersion {
 }
 
 // ── Formatting ───────────────────────────────────────────────
-const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
-  ["year", 31_536_000_000],
-  ["month", 2_592_000_000],
-  ["day", 86_400_000],
-  ["hour", 3_600_000],
-  ["minute", 60_000],
-];
-
-/** "2 days ago". Falls back to "just now" under a minute. */
-function timeAgo(iso: string): string {
-  const elapsed = Date.now() - new Date(iso).getTime();
-  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
-  for (const [unit, ms] of UNITS) {
-    if (Math.abs(elapsed) >= ms) {
-      return formatter.format(-Math.round(elapsed / ms), unit);
-    }
-  }
-  return "just now";
-}
-
 const SEVERITY_DOT: Record<ChangeSeverity, string> = {
   destructive: "bg-destructive",
   warning: "bg-warning",

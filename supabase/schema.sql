@@ -99,8 +99,17 @@ CREATE TABLE IF NOT EXISTS public.items (
   data           JSONB NOT NULL DEFAULT '{}'::jsonb,
   schema_version INTEGER NOT NULL DEFAULT 1,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Who added the item and who last changed it. Stamped by
+  -- stamp_item_authors() (§8b), never taken from the client.
+  created_by     UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  updated_by     UUID REFERENCES auth.users(id) ON DELETE SET NULL
 );
+
+-- For databases created before items had authors.
+ALTER TABLE public.items
+  ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS updated_by UUID REFERENCES auth.users(id) ON DELETE SET NULL;
 
 
 -- ============================================================
@@ -152,6 +161,70 @@ CREATE TABLE IF NOT EXISTS public.attributes (
 
 
 -- ============================================================
+-- 6b. Trash — deleting never destroys data
+-- ------------------------------------------------------------
+-- A trigger on items, categories and schema_versions (trash.sql) copies
+-- every deleted row here, so a delete by ANY route — the UI, a direct
+-- API call, an ON DELETE CASCADE — can be undone. Rows deleted together
+-- share a `batch`, drawn from trash_batch_seq: deleting a category with
+-- forty items is one entry, and restores as one.
+--
+-- Nothing reads this table directly. RLS is on with no policies, and
+-- list_trash(), restore_trash() and purge_trash() are the only way in.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.trash (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  batch      BIGINT NOT NULL,
+  table_name TEXT NOT NULL CHECK (table_name IN ('categories', 'items', 'schema_versions')),
+  row_id     UUID NOT NULL,
+  row_data   JSONB NOT NULL,
+  deleted_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  deleted_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE SEQUENCE IF NOT EXISTS public.trash_batch_seq;
+
+CREATE INDEX IF NOT EXISTS idx_trash_batch ON public.trash (batch);
+-- "Is this item's category in the trash?" — asked when listing and
+-- before restoring.
+CREATE INDEX IF NOT EXISTS idx_trash_row ON public.trash (row_id);
+
+
+-- ============================================================
+-- 6c. Invitations — how a teammate gets in with a role
+-- ------------------------------------------------------------
+-- Without this, joining meant finding the signup page unaided and then
+-- waiting for an admin to notice and change your role. An invitation
+-- names the role up front and travels as a link.
+--
+-- Only the SHA-256 of the link's token is stored, so a copy of this
+-- table is not a set of working invitations. The role is granted when
+-- the invited address is confirmed (schema.sql §9c), never merely
+-- because someone typed that address.
+--
+-- Reached only through supabase/invites.sql: RLS on, no policies.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.invitations (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email       TEXT NOT NULL,          -- always stored lower-cased
+  role        TEXT NOT NULL
+              CHECK (role IN ('SCHEMA_ADMIN', 'DATA_EDITOR', 'VIEWER')),
+  token_hash  TEXT NOT NULL,
+  invited_by  UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at  TIMESTAMPTZ NOT NULL DEFAULT now() + INTERVAL '7 days',
+  accepted_at TIMESTAMPTZ,
+  accepted_by UUID REFERENCES auth.users(id) ON DELETE SET NULL
+);
+
+-- One open invitation per address: a second one replaces the first,
+-- rather than leaving two links that both work.
+CREATE UNIQUE INDEX IF NOT EXISTS unique_open_invitation
+  ON public.invitations (email) WHERE accepted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_invitations_token ON public.invitations (token_hash);
+
+
+-- ============================================================
 -- 7. Indexes
 -- ============================================================
 -- GIN index for fast JSONB containment / key-exists queries on items.
@@ -163,8 +236,16 @@ CREATE INDEX IF NOT EXISTS idx_categories_parent ON public.categories (parent_id
 -- Category → blueprint provenance joins.
 CREATE INDEX IF NOT EXISTS idx_categories_blueprint ON public.categories (blueprint_id);
 
--- Item → category joins.
-CREATE INDEX IF NOT EXISTS idx_items_category ON public.items (category_id);
+-- Item → category joins, and the Items tab's default page: one
+-- category, newest first, with i.id as the tiebreaker query_items sorts
+-- by. The index returns rows already in that order, so a page is a
+-- short index walk instead of sorting the whole category — measured at
+-- 29 ms → 6 ms per page on a 20,000-item category. It also serves every
+-- lookup by category_id alone, which is why the old single-column index
+-- it replaces is dropped.
+CREATE INDEX IF NOT EXISTS idx_items_category_created
+  ON public.items (category_id, created_at DESC, id);
+DROP INDEX IF EXISTS public.idx_items_category;
 
 -- Slug uniqueness: unique within a parent, and unique among roots.
 CREATE UNIQUE INDEX IF NOT EXISTS unique_category_slug_parent
@@ -206,6 +287,57 @@ CREATE TRIGGER update_blueprints_modtime BEFORE UPDATE ON public.blueprints FOR 
 CREATE TRIGGER update_categories_modtime BEFORE UPDATE ON public.categories FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
 CREATE TRIGGER update_items_modtime      BEFORE UPDATE ON public.items      FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
 CREATE TRIGGER update_attributes_modtime BEFORE UPDATE ON public.attributes FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
+
+
+-- ============================================================
+-- 8b. Item authorship
+-- ------------------------------------------------------------
+-- created_by / updated_by come from the session, never from the row the
+-- client sent — otherwise anyone could attribute their edits to someone
+-- else. A client (anon / authenticated) always gets auth.uid(). Code
+-- running as the owner — a SECURITY DEFINER function, the SQL editor —
+-- may pass them explicitly. Authorship never changes on update. A
+-- schema change that rewrites an item's data counts as an edit by
+-- whoever made the schema change.
+--
+-- restore_trash() sets zchema.restoring for its own transaction, and
+-- then rows go back exactly as they were — an unknown author stays
+-- unknown instead of becoming whoever clicked Restore. A client cannot
+-- use this: the check only applies to code running as the owner.
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.stamp_item_authors()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+DECLARE
+  from_client CONSTANT BOOLEAN := current_user IN ('anon', 'authenticated');
+BEGIN
+  IF NOT from_client AND current_setting('zchema.restoring', true) = 'on' THEN
+    RETURN NEW;
+  END IF;
+
+  IF TG_OP = 'INSERT' THEN
+    IF from_client OR NEW.created_by IS NULL THEN
+      NEW.created_by := auth.uid();
+    END IF;
+    IF from_client OR NEW.updated_by IS NULL THEN
+      NEW.updated_by := NEW.created_by;
+    END IF;
+  ELSE
+    NEW.created_by := OLD.created_by;
+    NEW.updated_by := COALESCE(auth.uid(), CASE WHEN from_client THEN NULL ELSE NEW.updated_by END);
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS items_stamp_authors ON public.items;
+CREATE TRIGGER items_stamp_authors
+  BEFORE INSERT OR UPDATE ON public.items
+  FOR EACH ROW EXECUTE FUNCTION public.stamp_item_authors();
+
+REVOKE EXECUTE ON FUNCTION public.stamp_item_authors() FROM PUBLIC, anon, authenticated;
 -- NB: schema_versions is append-only; it has no updated_at column and no modtime trigger.
 
 
@@ -255,6 +387,17 @@ BEGIN
     NEW.email,
     CASE WHEN is_first_user THEN 'SCHEMA_ADMIN' ELSE 'VIEWER' END
   );
+
+  -- An invited signup gets the role its invitation names — but only
+  -- once the address is confirmed, which is usually later, on the
+  -- UPDATE that sets email_confirmed_at (§9c). This call covers the
+  -- case where it is already confirmed at insert, i.e. a project with
+  -- email confirmation switched off. Never for the first user: they
+  -- are the admin regardless.
+  IF NOT is_first_user THEN
+    PERFORM public.claim_invitation(NEW.id);
+  END IF;
+
   RETURN NEW;
 END;
 $$;
@@ -263,6 +406,35 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+
+-- ============================================================
+-- 9c. An invitation is claimed when the address is confirmed
+-- ------------------------------------------------------------
+-- The role must not hinge on someone typing an email address. Anyone
+-- holding a leaked invite link could sign up as the invited address, so
+-- the role is granted only once GoTrue has confirmed that address —
+-- this trigger — or, with confirmation switched off, at insert (§9).
+-- claim_invitation() lives in supabase/invites.sql.
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.handle_user_confirmed()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  PERFORM public.claim_invitation(NEW.id);
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_auth_user_confirmed ON auth.users;
+CREATE TRIGGER on_auth_user_confirmed
+  AFTER UPDATE OF email_confirmed_at ON auth.users
+  FOR EACH ROW
+  WHEN (OLD.email_confirmed_at IS NULL AND NEW.email_confirmed_at IS NOT NULL)
+  EXECUTE FUNCTION public.handle_user_confirmed();
 
 
 -- ============================================================
@@ -395,7 +567,8 @@ CREATE TRIGGER ensure_role_protection_insert
 -- (Verified against the live project on 2026-09-18 before relying on it:
 -- with EXECUTE revoked from `authenticated`, an insert by `authenticated`
 -- still fired the trigger. Getting this wrong would break every signup.)
-REVOKE EXECUTE ON FUNCTION public.handle_new_user()     FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.handle_new_user()      FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.handle_user_confirmed() FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.protect_role_update() FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.protect_role_insert() FROM PUBLIC, anon, authenticated;
 

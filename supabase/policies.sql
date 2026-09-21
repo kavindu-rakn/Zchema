@@ -24,6 +24,12 @@ ALTER TABLE public.categories      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.attributes      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.items           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.schema_versions ENABLE ROW LEVEL SECURITY;
+-- RLS on, and deliberately NO policy: with RLS enabled, no policy means
+-- no rows. The trash is reached only through trash.sql's functions.
+ALTER TABLE public.trash           ENABLE ROW LEVEL SECURITY;
+-- Likewise the invitations: only invites.sql's functions read them, and
+-- a client that could read token_hash could not use it anyway.
+ALTER TABLE public.invitations     ENABLE ROW LEVEL SECURITY;
 
 
 -- ============================================================
@@ -78,8 +84,12 @@ GRANT USAGE ON SCHEMA public TO authenticated;
 -- back exactly the DML each one needs. service_role keeps its ALL
 -- (server-side key, intentionally privileged).
 REVOKE ALL ON public.profiles, public.blueprints, public.categories,
-              public.attributes, public.items, public.schema_versions
+              public.attributes, public.items, public.schema_versions,
+              public.trash, public.invitations
   FROM anon, authenticated;
+-- public.trash is granted nothing back: see §1. Nor is its sequence,
+-- which only capture_deleted_row() — running as the owner — draws from.
+REVOKE ALL ON SEQUENCE public.trash_batch_seq FROM anon, authenticated;
 
 -- Zchema requires a login: the anonymous role gets nothing back.
 -- profiles: no INSERT/DELETE for clients — see §4. Rows are created by

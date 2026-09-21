@@ -23,17 +23,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { itemTitle } from "@/lib/items";
 import type { SearchResult } from "@/lib/types";
 
+/** The item's name — see itemTitle. */
 function displayValue(data: Record<string, unknown>): string {
-  for (const key of ["name", "title", "model", "model_number", "label", "sku"]) {
-    const value = data[key];
-    if (typeof value === "string" && value.trim()) return value;
-  }
-  const first = Object.entries(data).find(
-    ([key, value]) => key !== "__orphaned" && typeof value === "string" && value.trim()
-  );
-  return (first?.[1] as string) ?? "Untitled item";
+  return itemTitle(data) ?? "Untitled item";
 }
 
 function cell(value: unknown): string | null {

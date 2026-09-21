@@ -43,6 +43,9 @@ import {
   applySchemaChange,
   rollbackSchemaVersion,
 } from "@/app/(dashboard)/data-center/actions";
+import { useUnsavedWarning } from "@/components/use-unsaved-warning";
+import { useDraft } from "@/components/use-draft";
+import { draftKey } from "@/lib/drafts";
 import { resolveEffectiveSchema, slugify, validateFieldKey } from "@/lib/schema";
 import { cn } from "@/lib/utils";
 import type {
@@ -68,6 +71,13 @@ const FIELD_TYPES: FieldType[] = [
 
 type DraftField = SchemaField & { _uid: string; _locked: boolean };
 
+/** What survives leaving the page: the edit, and what it was based on. */
+interface StoredDraft {
+  own_fields: SchemaField[];
+  overrides: Record<string, FieldOverride>;
+  version: number;
+}
+
 let uidCounter = 0;
 function nextUid(): string {
   uidCounter += 1;
@@ -91,12 +101,18 @@ export function SchemaEditor({
   category,
   chain,
   canEdit,
+  schemaVersion,
   dismissedHints = [],
 }: {
   category: Category;
   /** Ancestors root-first, INCLUDING this category last. */
   chain: Pick<Category, "id" | "name" | "own_fields" | "overrides">[];
   canEdit: boolean;
+  /**
+   * The schema version this editor loaded (0 if none yet). Sent with the
+   * save so a change someone else made meanwhile is not overwritten.
+   */
+  schemaVersion: number;
   /** Onboarding hints this user has already dismissed. */
   dismissedHints?: string[];
 }) {
@@ -141,17 +157,41 @@ export function SchemaEditor({
     [ownFields, overrides, category]
   );
 
-  // Browser-level guard. Next's App Router has no navigation blocker,
-  // so this covers reloads and closing the tab.
+  // A drafted schema exists nowhere but this editor until it is
+  // applied, so warn before a reload or a closed tab…
+  useUnsavedWarning(dirty);
+
+  // …and keep it across an in-app navigation, which the browser never
+  // hears about. Offered back on the way in rather than restored
+  // silently: see use-draft.ts.
+  const draft = useDraft<StoredDraft>(draftKey("schema", category.id));
+  const { save: saveDraft, forget: forgetDraft } = draft;
+
+  const stored = useMemo<StoredDraft>(
+    () => ({ own_fields: stripDraft(ownFields), overrides, version: schemaVersion }),
+    [ownFields, overrides, schemaVersion]
+  );
+
   useEffect(() => {
-    if (!dirty) return;
-    const handler = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [dirty]);
+    if (dirty) saveDraft(stored);
+  }, [dirty, stored, saveDraft]);
+
+  // An offer only makes sense while it still differs from what is
+  // saved — a draft the category has since caught up with is noise.
+  const offered = draft.offered;
+  const offerDiffers =
+    offered != null &&
+    (JSON.stringify(offered.own_fields ?? []) !==
+      JSON.stringify(category.own_fields ?? []) ||
+      JSON.stringify(offered.overrides ?? {}) !== JSON.stringify(category.overrides ?? {}));
+
+  const restoreDraft = () => {
+    if (!offered) return;
+    setOwnFields(toDraft(offered.own_fields ?? []));
+    setOverrides(offered.overrides ?? {});
+    setEditingOverride(null);
+    draft.dismiss();
+  };
 
   // ── Validation ─────────────────────────────────────────────
   const inheritedByKey = useMemo(
@@ -193,7 +233,7 @@ export function SchemaEditor({
   // Debounced at 400ms and serialised by a generation counter: typing
   // fires several requests and they can land out of order, so a stale
   // response must never overwrite a newer one.
-  const draftKey = useMemo(
+  const draftSnapshot = useMemo(
     () => JSON.stringify({ fields: stripDraft(ownFields), overrides }),
     [ownFields, overrides]
   );
@@ -214,7 +254,7 @@ export function SchemaEditor({
       }
 
       setAnalyzing(true);
-      const { fields, overrides: draftOverrides } = JSON.parse(draftKey) as {
+      const { fields, overrides: draftOverrides } = JSON.parse(draftSnapshot) as {
         fields: SchemaField[];
         overrides: Record<string, FieldOverride>;
       };
@@ -238,7 +278,7 @@ export function SchemaEditor({
       live = false;
       clearTimeout(timer);
     };
-  }, [canEdit, dirty, hasErrors, draftKey, category.id]);
+  }, [canEdit, dirty, hasErrors, draftSnapshot, category.id]);
 
   // ── Mutators ───────────────────────────────────────────────
   const patchField = (uid: string, patch: Partial<DraftField>) =>
@@ -327,6 +367,7 @@ export function SchemaEditor({
     setOwnFields(toDraft(category.own_fields ?? []));
     setOverrides(category.overrides ?? {});
     setEditingOverride(null);
+    forgetDraft();
   };
 
   /**
@@ -343,10 +384,21 @@ export function SchemaEditor({
           own_fields: stripDraft(ownFields),
           overrides,
           remediations,
+          expectedVersion: schemaVersion,
         });
 
         if (!result.ok) {
-          toast.error(result.error);
+          // Someone else versioned this schema first. Reloading keeps the
+          // draft — this editor seeds its state once — and saving again
+          // reviews it against the new schema, where anything they added
+          // that this draft lacks shows up as a removal.
+          toast.error(result.error, {
+            duration: result.code === "conflict" ? Infinity : undefined,
+            action:
+              result.code === "conflict"
+                ? { label: "Reload", onClick: () => router.refresh() }
+                : undefined,
+          });
           resolve(false);
           return;
         }
@@ -381,6 +433,8 @@ export function SchemaEditor({
         });
 
         setImpact(null);
+        // Applied: there is nothing left that exists only in this tab.
+        forgetDraft();
         resolve(true);
         router.refresh();
       });
@@ -411,6 +465,30 @@ export function SchemaEditor({
 
   return (
     <div className="space-y-4">
+      {/* Work carried over from a previous visit to this tab. */}
+      {canEdit && offered && offerDiffers && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/40 bg-primary/5 px-4 py-3">
+          <p className="text-sm text-foreground">
+            You left unsaved changes to this schema.
+            {offered.version !== schemaVersion && (
+              <span className="text-muted-foreground">
+                {" "}
+                It has been saved since (now v{schemaVersion}) — restoring will show you what
+                yours would change.
+              </span>
+            )}
+          </p>
+          <div className="flex shrink-0 gap-2">
+            <Button size="sm" variant="ghost" onClick={forgetDraft}>
+              Discard
+            </Button>
+            <Button size="sm" onClick={restoreDraft}>
+              Restore them
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-sm font-medium text-foreground">

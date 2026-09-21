@@ -36,9 +36,15 @@ which, and use that word.
 ## Rules that are load-bearing
 
 **Never lose an item value.** A field that disappears moves its values to
-`data.__orphaned.<key>`. The only path that actually deletes is the `discard` remediation, which
-is never a default and requires a separate `confirm: true`. Do not add a code path that drops a
-value silently.
+`data.__orphaned.<key>`. Deleting does not destroy either: a trigger copies every deleted item,
+category and schema version into `public.trash` (`supabase/trash.sql`), whatever route the
+delete took — the UI, a direct PostgREST call, an `ON DELETE CASCADE`. Rows deleted together
+share a `batch` and `restore_trash()` puts them back as one, reconciling item data with the
+schema as it is now.
+
+Exactly two paths actually destroy data, and both demand a separate `confirm: true`: the
+`discard` remediation, and `purge_trash()` (SCHEMA_ADMIN only). Neither is ever a default. Do
+not add a third, and do not add a code path that drops a value silently.
 
 **Destructive operations go through impact analysis.** Schema edits, re-parenting and category
 deletion all route through the same dialog. If you are adding a fourth destructive operation, it
@@ -63,6 +69,26 @@ run the result in the SQL editor. Add the case to the fixture before changing th
 `diffSchemas()` is a display diff, not impact analysis. It names which fields and properties
 differ, for the history timeline; its severity is always `"safe"` and it does **not** agree with
 `analyze_schema_change`. Anything that decides whether a change may go ahead asks the SQL.
+
+**A save that would overwrite someone else's is refused, not merged.** An item save sends the
+`updated_at` it loaded and the UPDATE matches on it; a schema save sends the version the editor
+loaded and `apply_schema_change()` locks the category, compares, and raises SQLSTATE `PT409`
+(HTTP 409 through PostgREST). A bulk edit sends one `updated_at` per selected row and
+`set_item_field()` matches each one, writing the rest and naming what it skipped. All three
+surface as a choice — reload, or overwrite deliberately — never as a silent last-writer-wins.
+Anything new that rewrites a whole record needs the same.
+
+**Unsaved work belongs in sessionStorage, through `src/lib/drafts.ts`.** Every accessor there is
+total: storage can be absent (the server), blocked, or full, and an editor must keep working in
+all three cases. `useUnsavedWarning` covers a reload or a closed tab; the App Router has no
+route-change guard, so a draft is what covers navigating away inside the app. An item form folds
+its draft straight back into the fields — same item, fields on screen. The schema editor and the
+blueprint builder **offer** theirs instead (`useDraft`), because a days-old draft silently
+presented as the saved state is how someone applies a change they never meant to.
+
+**Authorship comes from the session, not the payload.** `items.created_by` / `updated_by` are
+stamped by `stamp_item_authors()`; a client that sends its own values has them overwritten. The
+same rule holds for anything else recording who did something.
 
 **Every mutating server action re-checks the role.** A Server Action is a public POST endpoint.
 RLS guards the tables, but `requireSchemaAdmin()` / `requireDataEditor()` is not optional —
@@ -97,7 +123,7 @@ through `%L`. An unrecognised key is ignored, not run.
   optional wasm peers `@emnapi/core` and `@emnapi/runtime` out of the lock, and even strips them
   from a lock that has them; CI's `npm ci` then fails with `Missing: @emnapi/… from lock file`.
   Repair it with `npx npm@11.19.0 install --package-lock-only`.
-- **Database changes are migrations.** The nine `supabase/*.sql` feature files are the readable
+- **Database changes are migrations.** The `supabase/*.sql` feature files are the readable
   source; `supabase/migrations/` is what a database actually runs, and
   `supabase_migrations.schema_migrations` records which have run. To change the database, edit
   the feature file, run `npm run db:new -- <name>`, put the same change in the new migration,
@@ -110,7 +136,14 @@ through `%L`. An unrecognised key is ignored, not run.
   test enforces it); tables are `CREATE … IF NOT EXISTS`. Tearing everything down is
   `supabase/dev/reset.sql`, dev databases only.
 - **SQL load order**: `schema → functions → triggers → policies → impact → attributes → search →
-  import → onboarding`. The baseline migration is these nine files concatenated in this order.
+  import → onboarding → trash → invites`. The baseline migration is the first nine concatenated
+  in this order; `trash` and `invites` arrived as migrations of their own. A new feature file
+  goes at the end of this list AND in `FEATURE_FILES` in `supabase/migrations.test.ts`.
+- **A table clients never touch is reached through functions.** `trash` and `invitations` have
+  RLS on with no policies and no grants, so the only way in is a SECURITY DEFINER function that
+  checks the role itself. Inside one of those, `current_user` is the owner, so
+  `require_schema_admin()`'s "direct database session" branch would wave a caller with no JWT
+  through: revoke EXECUTE from `anon` on every such function, and keep saying why.
 - **Seed data changes.** Do not write a test assertion that depends on a specific seed row count
   unless the test builds its own sandbox and tears it down.
 

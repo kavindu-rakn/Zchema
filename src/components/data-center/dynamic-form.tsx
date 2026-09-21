@@ -20,8 +20,15 @@ import {
   isBlank,
   normaliseForSave,
   orphanedEntries,
+  safeHref,
   validateItemData,
 } from "@/lib/items";
+import {
+  clearDraft as forgetDraft,
+  draftKey,
+  readDraft,
+  writeDraft,
+} from "@/lib/drafts";
 import { cn } from "@/lib/utils";
 import type { EffectiveField, FieldType } from "@/lib/types";
 
@@ -55,16 +62,31 @@ function seedValues(
   return seeded;
 }
 
-/** A saved draft for this form, or nothing. Never throws. */
-function readDraft(draftKey: string | null, disabled: boolean): Record<string, unknown> {
-  if (!draftKey || disabled || typeof window === "undefined") return {};
-  try {
-    const stored = window.sessionStorage.getItem(draftKey);
-    return stored ? JSON.parse(stored) : {};
-  } catch {
-    // Corrupt or unavailable storage — start clean.
-    return {};
-  }
+/** Where the form keeps an unsaved draft. One place, so callers agree. */
+function draftKeyFor(categoryId: string | undefined, itemId: string | null): string | null {
+  return categoryId ? draftKey("item", `${categoryId}:${itemId ?? "new"}`) : null;
+}
+
+/**
+ * Forget an item's unsaved draft — for a caller that has decided the
+ * edits are not wanted, e.g. after choosing someone else's version in a
+ * save conflict. Never throws.
+ */
+export function clearDraft(categoryId: string, itemId: string | null) {
+  const key = draftKeyFor(categoryId, itemId);
+  if (key) forgetDraft(key);
+}
+
+/**
+ * A saved draft for this form, or nothing.
+ *
+ * Folded straight back into the field values rather than offered the
+ * way the schema editor offers its draft: it is the same item, the
+ * fields are on screen, and the user can see what came back.
+ */
+function readFormDraft(key: string | null, disabled: boolean): Record<string, unknown> {
+  if (!key || disabled) return {};
+  return readDraft<Record<string, unknown>>(key) ?? {};
 }
 
 export interface DynamicFormProps {
@@ -79,7 +101,14 @@ export interface DynamicFormProps {
   showProvenance?: boolean;
   /** Group inputs under "Inherited from X" headers. */
   grouped?: boolean;
-  onSubmit?: (data: Record<string, unknown>) => void | Promise<void>;
+  /**
+   * Resolve `false` when the save failed, and the draft is kept — the
+   * form stays filled, and so does storage if the sheet is then closed.
+   * Resolve only once the save has ANSWERED: resolving early (say, as
+   * soon as a transition starts) deletes the draft of a save that may
+   * yet fail.
+   */
+  onSubmit?: (data: Record<string, unknown>) => boolean | void | Promise<boolean | void>;
   onCancel?: () => void;
   onDirtyChange?: (dirty: boolean) => void;
   submitLabel?: string;
@@ -107,14 +136,14 @@ export function DynamicForm({
   onRestoreOrphan,
   onDiscardOrphan,
 }: DynamicFormProps) {
-  const draftKey = categoryId ? `zchema:draft:${categoryId}:${itemId ?? "new"}` : null;
+  const draftKey = draftKeyFor(categoryId, itemId);
   const incomingBaseline = useMemo(() => JSON.stringify(initialData ?? {}), [initialData]);
 
   // An interrupted draft is folded into the first values, so an accidental
   // dialog close does not lose a half-filled form.
   const [values, setValues] = useState<Record<string, unknown>>(() => ({
     ...seedValues(schema, initialData ?? {}),
-    ...readDraft(draftKey, disabled),
+    ...readFormDraft(draftKey, disabled),
   }));
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [submitted, setSubmitted] = useState(false);
@@ -139,7 +168,7 @@ export function DynamicForm({
     setSeededFor(itemId);
     setValues({
       ...seedValues(schema, initialData ?? {}),
-      ...(switchedItem ? readDraft(draftKey, disabled) : {}),
+      ...(switchedItem ? readFormDraft(draftKey, disabled) : {}),
     });
     setTouched(new Set());
     setSubmitted(false);
@@ -159,13 +188,7 @@ export function DynamicForm({
     (key: string, value: unknown) => {
       setValues((previous) => {
         const next = { ...previous, [key]: value };
-        if (draftKey && !disabled) {
-          try {
-            window.sessionStorage.setItem(draftKey, JSON.stringify(next));
-          } catch {
-            // Storage full or blocked — editing still works.
-          }
-        }
+        if (draftKey && !disabled) writeDraft(draftKey, next);
         return next;
       });
     },
@@ -179,15 +202,10 @@ export function DynamicForm({
     setSubmitted(true);
     if (Object.keys(errors).length > 0) return;
 
-    await onSubmit?.(normaliseForSave(schema, values));
+    const saved = await onSubmit?.(normaliseForSave(schema, values));
+    if (saved === false) return;
 
-    if (draftKey) {
-      try {
-        window.sessionStorage.removeItem(draftKey);
-      } catch {
-        // Nothing to clean up.
-      }
-    }
+    if (draftKey) forgetDraft(draftKey);
   };
 
   const orphans = orphanedEntries(values);
@@ -195,6 +213,8 @@ export function DynamicForm({
 
   const renderField = (field: EffectiveField) => {
     const value = values[field.key];
+    // Only an http(s) address becomes a link — see safeHref.
+    const href = field.type === "url" && !isBlank(value) ? safeHref(String(value)) : null;
     const id = `field-${field.key}`;
     const error = showError(field.key);
     const markProvenance = showProvenance && !grouped;
@@ -307,7 +327,7 @@ export function DynamicForm({
                 INPUT_CLASS,
                 error && "border-destructive",
                 field.unit && "pr-12",
-                field.type === "url" && !isBlank(value) && "pr-9"
+                href && "pr-9"
               )}
             />
             {field.unit && (
@@ -315,9 +335,9 @@ export function DynamicForm({
                 {field.unit}
               </span>
             )}
-            {field.type === "url" && !isBlank(value) && !errors[field.key] && (
+            {href && (
               <a
-                href={String(value).includes("://") ? String(value) : `https://${value}`}
+                href={href}
                 target="_blank"
                 rel="noopener noreferrer"
                 title="Open link"

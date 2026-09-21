@@ -142,45 +142,11 @@ export async function updateCategory(
   }
 }
 
-/**
- * Replace a category's own_fields and/or overrides.
- *
- * Keys are checked here for a fast, precise message; the database
- * triggers remain the authority (they also enforce uniqueness across
- * the whole ancestor/descendant chain, which the client cannot see).
- */
-export async function updateCategorySchema(
-  id: string,
-  input: {
-    own_fields?: SchemaField[];
-    overrides?: Record<string, FieldOverride>;
-  }
-): Promise<ActionResult> {
-  try {
-    await requireSchemaAdmin();
-
-    const patch: Record<string, unknown> = {};
-
-    if (input.own_fields !== undefined) {
-      const fieldError = validateOwnFields(input.own_fields);
-      if (fieldError) return { ok: false, error: fieldError };
-      patch.own_fields = input.own_fields;
-    }
-
-    if (input.overrides !== undefined) patch.overrides = input.overrides;
-
-    if (Object.keys(patch).length === 0) return { ok: true, data: null };
-
-    const supabase = await createClient();
-    const { error } = await supabase.from("categories").update(patch).eq("id", id);
-    if (error) throw new Error(error.message);
-
-    revalidateCategoryViews();
-    return { ok: true, data: null };
-  } catch (error) {
-    return actionError(error, "Could not save the schema.");
-  }
-}
+// There is deliberately no "write own_fields directly" action. It existed
+// (updateCategorySchema), had no caller, and was a public POST endpoint
+// that changed a schema without impact analysis or remediation — values
+// of a removed field then vanished on the item's next save. Every schema
+// change goes through applySchemaChange.
 
 // ── Impact analysis (Phase 5) ────────────────────────────────
 
@@ -235,6 +201,12 @@ export async function applySchemaChange(
     overrides: Record<string, FieldOverride>;
     /** Keyed by `<field_key>` or `<field_key>:<kind>`. */
     remediations?: Record<string, Remediation>;
+    /**
+     * The schema version the editor loaded. The database refuses the
+     * save if the category has been versioned since, rather than let
+     * this draft silently overwrite someone else's change.
+     */
+    expectedVersion: number;
   }
 ): Promise<ActionResult<SchemaApplyResult>> {
   try {
@@ -250,8 +222,17 @@ export async function applySchemaChange(
       p_new_overrides: input.overrides,
       p_remediations: input.remediations ?? {},
       p_changed_by: profile.id,
+      p_expected_version: input.expectedVersion,
     });
 
+    // PT409: raised by apply_schema_change when the version moved on.
+    if (error?.code === "PT409") {
+      return {
+        ok: false,
+        code: "conflict",
+        error: [error.message, error.hint].filter(Boolean).join(" "),
+      };
+    }
     if (error) throw new Error(error.message);
 
     revalidateCategoryViews();
@@ -463,6 +444,8 @@ export async function deleteCategory(
     moved_items: number;
     orphaned_values: number;
     deleted_items: number;
+    /** The trash entry the deletion made — for Undo. */
+    trash_batch: string | null;
   }>
 > {
   try {
@@ -484,6 +467,7 @@ export async function deleteCategory(
         moved_items: number;
         orphaned_values: number;
         deleted_items: number;
+        trash_batch: string | null;
       },
     };
   } catch (error) {

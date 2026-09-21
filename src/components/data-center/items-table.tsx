@@ -343,6 +343,7 @@ export function ItemsTable({
       {canEdit && selected.size > 0 && (
         <BulkActionsBar
           selected={[...selected]}
+          updatedAt={Object.fromEntries(rows.map((row) => [row.id, row.updated_at]))}
           categoryId={categoryId}
           schema={fullSchema ?? schema}
           tree={tree}

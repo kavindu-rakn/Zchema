@@ -4,6 +4,7 @@
 
 import type { EffectiveField, FieldType, SchemaField } from "./types.ts";
 import type { InferredField } from "./inference.ts";
+import { unguardFormula } from "./export.ts";
 
 /** What the wizard decided to do with one incoming column. */
 export interface ColumnPlan {
@@ -33,7 +34,9 @@ export function normaliseCell(
   type: FieldType,
   dateOrder: "dmy" | "mdy" = "dmy"
 ): string {
-  const text = (raw ?? "").trim();
+  // A Zchema export guards formula-like text with a leading apostrophe;
+  // take it off again so the round trip is exact.
+  const text = unguardFormula((raw ?? "").trim()).trim();
   if (text === "") return "";
 
   if (type !== "date") return text;

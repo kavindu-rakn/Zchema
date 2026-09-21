@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Saira, Geist_Mono } from "next/font/google";
+import { headers } from "next/headers";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Motion } from "@/components/motion";
 import { Toaster } from "sonner";
@@ -26,11 +27,15 @@ export const metadata: Metadata = {
 // comfortable to compact on every page load.
 const DENSITY_SCRIPT = `try{var d=localStorage.getItem('zchema:density');if(d)document.documentElement.setAttribute('data-density',d);}catch(e){}`;
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // The CSP allows only scripts carrying this request's nonce (see
+  // src/proxy.ts). Next.js stamps its own; this one is written by hand.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
     <html
       lang="en"
@@ -38,7 +43,13 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        <script dangerouslySetInnerHTML={{ __html: DENSITY_SCRIPT }} />
+        {/* Browsers blank a nonce attribute once the CSP has read it, so
+            hydration sees "" where the server wrote the value. */}
+        <script
+          nonce={nonce}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: DENSITY_SCRIPT }}
+        />
       </head>
       <body className="flex min-h-full flex-col bg-background font-sans text-foreground">
         {/* framer-motion ignores prefers-reduced-motion unless told to.

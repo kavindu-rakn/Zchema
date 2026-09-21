@@ -3,8 +3,9 @@
 -- Run AFTER schema.sql → functions.sql → triggers.sql → policies.sql
 --
 -- ⚠️  DESTRUCTIVE: the TRUNCATE below deletes ALL blueprints,
--- categories, items and schema versions. Profiles/auth users are
--- untouched. Re-running is safe and idempotent.
+-- categories, items and schema versions, and empties the trash.
+-- Profiles/auth users are untouched. Re-running is safe and
+-- idempotent.
 --
 -- ⚠️  This is an ALTERNATIVE to seedAmazon.sql, not an addition —
 -- each script truncates first. Run one or the other.
@@ -27,7 +28,7 @@
 --       override: condition → narrowed options + new label
 -- ============================================================
 
-TRUNCATE public.items, public.schema_versions, public.categories, public.blueprints CASCADE;
+TRUNCATE public.items, public.schema_versions, public.categories, public.blueprints, public.trash CASCADE;
 
 
 -- ============================================================

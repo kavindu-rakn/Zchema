@@ -3,7 +3,7 @@
 -- Expanded Version: ~750 lines, >250 items, deep categories, more blueprints
 -- ============================================================
 
-TRUNCATE public.items, public.schema_versions, public.categories, public.blueprints CASCADE;
+TRUNCATE public.items, public.schema_versions, public.categories, public.blueprints, public.trash CASCADE;
 
 -- ============================================================
 -- 1. Blueprints — presets ONLY

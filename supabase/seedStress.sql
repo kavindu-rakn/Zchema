@@ -15,7 +15,7 @@
 -- ancestor walk is exercised rather than averaged away.
 -- ============================================================
 
-TRUNCATE public.items, public.schema_versions, public.categories CASCADE;
+TRUNCATE public.items, public.schema_versions, public.categories, public.trash CASCADE;
 
 DO $$
 DECLARE

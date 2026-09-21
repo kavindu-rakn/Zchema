@@ -99,7 +99,7 @@ BEGIN
 
   -- ── 6. The index question, asked properly ─────────────────
   -- items are filtered by category constantly; confirm the plan uses
-  -- idx_items_category rather than assuming it does.
+  -- idx_items_category_created rather than assuming it does.
   EXECUTE
     'EXPLAIN (ANALYZE, FORMAT TEXT) SELECT count(*) FROM public.items i '
     || 'WHERE i.category_id IN (SELECT s.id FROM public.get_category_subtree('

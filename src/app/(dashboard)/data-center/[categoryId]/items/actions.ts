@@ -18,6 +18,7 @@ import { createClient } from "@/utils/supabase/server";
 import { requireDataEditor, requireSchemaAdmin } from "@/lib/auth";
 import { actionError } from "@/lib/action-result";
 import { ORPHAN_KEY, isBlank, normaliseForSave, validateItemData } from "@/lib/items";
+import { timeAgo } from "@/lib/time";
 import type { ActionResult, EffectiveField, SchemaField } from "@/lib/types";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
@@ -93,10 +94,21 @@ export async function createItem(
   }
 }
 
+/**
+ * Save an item's data.
+ *
+ * `expectedUpdatedAt` is the item's updated_at as the form loaded it.
+ * The UPDATE matches on it too, so if anyone saved the item since — or
+ * a schema change rewrote it — nothing is written and the caller hears
+ * who changed it. Without this, the later save silently replaced the
+ * earlier one, including values a schema change had just moved to
+ * __orphaned. Pass null only to overwrite deliberately.
+ */
 export async function updateItem(
   itemId: string,
   categoryId: string,
-  data: Record<string, unknown>
+  data: Record<string, unknown>,
+  expectedUpdatedAt: string | null
 ): Promise<ActionResult> {
   try {
     await requireDataEditor();
@@ -110,12 +122,23 @@ export async function updateItem(
     const clean = normaliseForSave(schema, data);
     const version = await currentSchemaVersion(supabase, categoryId);
 
-    const { error } = await supabase
+    let update = supabase
       .from("items")
       .update({ data: clean, schema_version: version })
       .eq("id", itemId);
+    if (expectedUpdatedAt) update = update.eq("updated_at", expectedUpdatedAt);
 
+    const { data: written, error } = await update.select("id");
     if (error) throw new Error(error.message);
+
+    if (!written || written.length === 0) {
+      const conflict = await describeItemConflict(supabase, itemId);
+      // A deleted item is not a conflict to resolve — there is nothing
+      // left to overwrite — so it is reported as a plain failure.
+      return conflict.gone
+        ? { ok: false, error: conflict.message }
+        : { ok: false, code: "conflict", error: conflict.message };
+    }
 
     revalidateCategory(categoryId);
     return { ok: true, data: null };
@@ -124,100 +147,153 @@ export async function updateItem(
   }
 }
 
-export async function deleteItem(
-  itemId: string,
-  categoryId: string
-): Promise<ActionResult> {
-  try {
-    await requireDataEditor();
+/** Why a save matched no row: someone changed the item, or deleted it. */
+async function describeItemConflict(
+  supabase: Supabase,
+  itemId: string
+): Promise<{ message: string; gone: boolean }> {
+  const { data: current } = await supabase
+    .from("items")
+    .select("updated_at, updated_by")
+    .eq("id", itemId)
+    .maybeSingle();
 
-    const supabase = await createClient();
-    const { error } = await supabase.from("items").delete().eq("id", itemId);
-    if (error) throw new Error(error.message);
-
-    revalidateCategory(categoryId);
-    return { ok: true, data: null };
-  } catch (error) {
-    return actionError(error, "Could not delete the item.");
+  if (!current) {
+    return {
+      gone: true,
+      message: "This item was deleted while you were editing it. It is in the trash if you need it back.",
+    };
   }
+
+  const { data: email } = current.updated_by
+    ? await supabase.rpc("member_email", { p_user_id: current.updated_by })
+    : { data: null };
+  const who = typeof email === "string" && email ? email : "Someone";
+  return {
+    gone: false,
+    message: `${who} changed this item ${timeAgo(current.updated_at as string)}, while you were editing it.`,
+  };
 }
 
+/**
+ * Move items to the trash. Nothing is destroyed: the database copies
+ * every deleted row into the trash (supabase/trash.sql), and
+ * `trashBatch` is the entry to hand restoreTrash() for Undo.
+ */
 export async function deleteItems(
   itemIds: string[],
   categoryId: string
-): Promise<ActionResult<{ deleted: number }>> {
+): Promise<ActionResult<{ deleted: number; trashBatch: string | null }>> {
   try {
     await requireDataEditor();
-    if (itemIds.length === 0) return { ok: true, data: { deleted: 0 } };
+    if (itemIds.length === 0) return { ok: true, data: { deleted: 0, trashBatch: null } };
 
     const supabase = await createClient();
-    const { error, count } = await supabase
-      .from("items")
-      .delete({ count: "exact" })
-      .in("id", itemIds);
-
+    const { data, error } = await supabase.rpc("delete_items", { p_item_ids: itemIds });
     if (error) throw new Error(error.message);
 
+    const result = data as { deleted: number; trash_batch: string | null };
     revalidateCategory(categoryId);
-    return { ok: true, data: { deleted: count ?? itemIds.length } };
+    return { ok: true, data: { deleted: result.deleted, trashBatch: result.trash_batch } };
   } catch (error) {
     return actionError(error, "Could not delete those items.");
   }
+}
+
+export async function deleteItem(
+  itemId: string,
+  categoryId: string
+): Promise<ActionResult<{ deleted: number; trashBatch: string | null }>> {
+  return deleteItems([itemId], categoryId);
+}
+
+/** An item and the `updated_at` it carried when the user selected it. */
+export interface ItemToken {
+  id: string;
+  /** null skips the check, which is the deliberate overwrite. */
+  updatedAt: string | null;
 }
 
 /**
  * Set one field to one value across many items.
  *
  * The fastest way out of the mess a newly-required field creates —
- * Phase 5's impact dialog links straight here.
+ * the impact dialog links straight here.
+ *
+ * Two things the row-at-a-time version got wrong. It sent one UPDATE
+ * per item, so a 200-item selection was 201 round trips; and it read
+ * each row, edited it in memory and wrote the whole thing back, which
+ * quietly discarded anything saved in between. Both are now one call
+ * to set_item_field() (functions.sql §12), which matches each row on
+ * the `updated_at` the user was looking at and reports the ones that
+ * had moved on instead of trampling them.
+ *
+ * `force` re-runs the same write without that check, for a caller who
+ * has been told what it would overwrite and said yes anyway.
  */
 export async function setFieldValue(
-  itemIds: string[],
+  items: ItemToken[],
   categoryId: string,
   key: string,
-  value: unknown
-): Promise<ActionResult<{ updated: number }>> {
+  value: unknown,
+  force = false
+): Promise<ActionResult<{ updated: number; conflicted: string[] }>> {
   try {
     await requireDataEditor();
-    if (itemIds.length === 0) return { ok: true, data: { updated: 0 } };
+    if (items.length === 0) return { ok: true, data: { updated: 0, conflicted: [] } };
 
     const supabase = await createClient();
-    const schema = await fetchSchema(supabase, categoryId);
 
-    const field = schema.find((candidate) => candidate.key === key);
-    if (!field) {
-      return { ok: false, error: `“${key}” is not a field on this category.` };
-    }
-
-    // Validate the single value the same way the form would.
-    const invalid = firstError(validateItemData([field], { [key]: value }));
-    if (invalid) return { ok: false, error: invalid };
-
+    // A subtree selection spans several categories, each with its own
+    // effective schema. The value has to be valid in every one of
+    // them, so they are all fetched — one per category, never per item.
     const { data: rows, error: readError } = await supabase
       .from("items")
-      .select("id, data")
-      .in("id", itemIds);
+      .select("category_id")
+      .in(
+        "id",
+        items.map((item) => item.id)
+      );
     if (readError) throw new Error(readError.message);
 
-    const cleanValue = normaliseForSave([field], { [key]: value })[key];
-    const version = await currentSchemaVersion(supabase, categoryId);
+    const categoryIds = [
+      ...new Set([...((rows ?? []) as { category_id: string }[]).map((r) => r.category_id)]),
+    ];
+    const schemas = await Promise.all(
+      (categoryIds.length > 0 ? categoryIds : [categoryId]).map((id) => fetchSchema(supabase, id))
+    );
 
-    let updated = 0;
-    for (const row of (rows ?? []) as { id: string; data: Record<string, unknown> }[]) {
-      const next = { ...row.data };
-      if (isBlank(cleanValue)) delete next[key];
-      else next[key] = cleanValue;
-
-      const { error } = await supabase
-        .from("items")
-        .update({ data: next, schema_version: version })
-        .eq("id", row.id);
-      if (error) throw new Error(error.message);
-      updated += 1;
+    const fields: EffectiveField[] = [];
+    for (const schema of schemas) {
+      const field = schema.find((candidate) => candidate.key === key);
+      if (!field) {
+        return { ok: false, error: `“${key}” is not a field on every selected item’s category.` };
+      }
+      const invalid = firstError(validateItemData([field], { [key]: value }));
+      if (invalid) return { ok: false, error: invalid };
+      fields.push(field);
     }
 
+    // A child may override a field's label or options but never its
+    // type, and normalisation is driven by type alone — so any of the
+    // resolved fields normalises the value the same way.
+    const cleanValue = normaliseForSave([fields[0]], { [key]: value })[key];
+
+    const { data, error } = await supabase.rpc("set_item_field", {
+      p_items: items.map((item) => ({ id: item.id, updated_at: item.updatedAt })),
+      p_key: key,
+      // A JSON null clears the key rather than storing an empty value.
+      p_value: isBlank(cleanValue) ? null : cleanValue,
+      p_force: force,
+    });
+    if (error) throw new Error(error.message);
+
+    const result = data as { updated: number; conflicted: string[] };
     revalidateCategory(categoryId);
-    return { ok: true, data: { updated } };
+    return {
+      ok: true,
+      data: { updated: result.updated, conflicted: result.conflicted ?? [] },
+    };
   } catch (error) {
     return actionError(error, "Could not update those items.");
   }
