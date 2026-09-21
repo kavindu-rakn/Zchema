@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test \"src/**/*.test.ts\" \"supabase/**/*.test.ts\"",
     "gen:resolver-sql": "node supabase/tests/generate-resolver-sql.ts",
+    "gen:brand": "node scripts/generate-brand-assets.mjs",
     "db:new": "npx --yes supabase@2.117.0 migration new",
     "db:push": "npx --yes supabase@2.117.0 db push",
     "db:status": "npx --yes supabase@2.117.0 migration list"
@@ -38,6 +39,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.11",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

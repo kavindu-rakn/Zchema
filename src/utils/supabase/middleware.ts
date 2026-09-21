@@ -1,6 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { isPublicRoute } from "@/lib/public-routes";
+
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
@@ -38,22 +40,9 @@ export async function updateSession(request: NextRequest) {
   // If user is not signed in and the current path is not public,
   // redirect to /login.
   //
-  // /auth/callback MUST be public. It is the PKCE code-exchange landing
-  // page, so by definition there is no session yet when it is hit —
-  // omitting it bounced every confirmation link to /login before
-  // exchangeCodeForSession() could run, which silently broke email
-  // verification and any future OAuth or magic-link flow.
-  const path = request.nextUrl.pathname;
-  const isPublicRoute =
-    path === "/" ||
-    path === "/login" ||
-    path === "/signup" ||
-    path === "/forgot-password" ||
-    path === "/auth/callback";
-  // /update-password is deliberately NOT public: it is only useful with
-  // the session /auth/callback creates from a reset link.
-
-  if (!user && !isPublicRoute) {
+  // The list itself lives in src/lib/public-routes.ts, with the reason
+  // each entry is on it and a unit test pinning both directions.
+  if (!user && !isPublicRoute(request.nextUrl.pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     const redirect = NextResponse.redirect(url);

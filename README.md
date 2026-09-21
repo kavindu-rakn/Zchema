@@ -161,7 +161,7 @@ To change the database, edit the feature file and add a migration carrying the s
 ### Tests
 
 ```bash
-npm test            # 328 tests: resolver cases, migration drift, query DSL, CSV, export, redirects
+npm test            # 337 tests: resolver cases, migration drift, query DSL, CSV, export, redirects
 npm run typecheck
 npm run lint
 ```
@@ -170,6 +170,29 @@ CI runs all three on every pull request. SQL suites live in `supabase/tests/` an
 Supabase SQL editor; each ends in a result-set `SELECT` of PASS/FAIL rows.
 `resolver_differential_test.sql` is generated from the same resolver cases `npm test` uses —
 `npm run gen:resolver-sql` rewrites it after the fixture changes.
+
+### Branding
+
+Two source files in [`brand/`](brand/) — the rendered app icon and the wordmark lockup — plus a
+flat vector trace of the mark at `src/app/icon.svg`. Almost everything a browser, phone or chat
+app asks for is generated from them:
+
+```bash
+npm run gen:brand   # favicon.ico, apple-icon, PWA icons, the 1200x630 social card
+```
+
+The rendered art feeds the large icons, where its bevel and glow have room to show; below ~64px
+that detail turns to mush, so the flat vector feeds the favicon instead. Next.js's file
+conventions under `src/app/` write the `<link>` and `<meta>` tags, so nothing lists the icons by
+hand — see [`brand/README.md`](brand/README.md) for which file serves which surface, and for the
+two tags that have no file convention.
+
+The one exception to "generated" is `public/icons/safari-pinned-tab.svg`, which is hand-written:
+Safari draws it as a one-colour silhouette, so it carries no fills and its seam is widened to
+survive at 16px.
+
+`NEXT_PUBLIC_SITE_URL` sets the origin the link previews point at. It is optional: on Vercel the
+platform's own variable covers production, and `next dev` uses localhost.
 
 ---
 
