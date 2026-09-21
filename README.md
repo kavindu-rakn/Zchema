@@ -161,7 +161,7 @@ To change the database, edit the feature file and add a migration carrying the s
 ### Tests
 
 ```bash
-npm test            # 318 tests: resolver cases, migration drift, query DSL, CSV, export, redirects
+npm test            # 328 tests: resolver cases, migration drift, query DSL, CSV, export, redirects
 npm run typecheck
 npm run lint
 ```
