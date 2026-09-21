@@ -66,7 +66,7 @@ export function TopBar({
           href="/dashboard"
           className="flex items-center gap-2 rounded-md px-1 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <LogoMark className="h-5 w-5 text-primary" />
+          <LogoMark className="h-6 w-6 text-primary" />
           <span className="font-heading text-sm font-semibold tracking-tight text-foreground">
             Zchema
           </span>

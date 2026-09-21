@@ -12,9 +12,9 @@ export default function Home() {
           See what breaks before it breaks
         </div>
 
-        <div className="mt-2 mb-2 flex h-20 w-20 items-center justify-center rounded-2xl border border-border/20 shadow-xl">
-          <LogoMark className="h-12 w-12 text-primary" />
-        </div>
+        {/* The mark is its own rounded tile now, so it needs no frame
+            around it — just the glow the rendered artwork has. */}
+        <LogoMark className="mt-2 mb-2 h-20 w-20 text-primary drop-shadow-[0_0_28px_rgba(0,196,131,0.28)]" />
 
         <h1 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
           <span className="text-primary">Z</span>chema

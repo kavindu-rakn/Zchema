@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Safari pinned tabs and Touch Bar favourites render this as a
+       silhouette in one user-chosen colour, so it carries no fill of its
+       own. The seam between the two plates is widened from the mark's
+       hairline to 22 units: at the 16px a pinned tab actually draws, a
+       hairline closes up and the step — the only thing that tells this
+       apart from a plain rounded square — disappears with it. -->
+  <path d="M0 88A88 88 0 0 1 88 0h336a88 88 0 0 1 88 88v178H313.5L200.5 153H0Z"/>
+  <path d="M0 175h200.5L313.5 288H512v136a88 88 0 0 1-88 88H88a88 88 0 0 1-88-88Z"/>
+</svg>

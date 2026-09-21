@@ -1,7 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#0a0a0a"/>
-  <path d="M17 15H53V25L30 45H53V55H17V45L40 25H17Z" fill="#047857"/>
-  <path d="M14 12H50V22L27 42H50V52H14V42L37 22H14Z" fill="#34d399"/>
-  <path d="M37 22H50L27 42H14Z" fill="#000" opacity="0.22"/>
-  <path d="M14 12H50V14.5H14Z" fill="#fff" opacity="0.3"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Zchema mark. Flat vector rendition of brand/zchema-mark.webp, traced to
+       the same geometry: a rounded square cut by a stepped 45° line, dark
+       plate above, green plate below, a hairline seam between them.
+       Full-bleed on purpose — this is what a 16px browser tab renders. -->
+  <defs>
+    <linearGradient id="zm-plate" gradientUnits="userSpaceOnUse" x1="96" y1="0" x2="300" y2="280">
+      <stop offset="0" stop-color="#383d42"/>
+      <stop offset="1" stop-color="#1e2226"/>
+    </linearGradient>
+    <linearGradient id="zm-green" gradientUnits="userSpaceOnUse" x1="40" y1="170" x2="430" y2="500">
+      <stop offset="0" stop-color="#15e59c"/>
+      <stop offset="0.45" stop-color="#00c187"/>
+      <stop offset="1" stop-color="#009a6c"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="88" fill="#0be08f"/>
+  <path fill="url(#zm-plate)" d="M0 88A88 88 0 0 1 88 0h336a88 88 0 0 1 88 88v184.7H315.5L202.4 159.6H0Z"/>
+  <path fill="url(#zm-green)" d="M0 168.1h198.7L311.4 280.8H512V424a88 88 0 0 1-88 88H88a88 88 0 0 1-88-88Z"/>
 </svg>

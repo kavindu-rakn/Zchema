@@ -12,9 +12,7 @@ export default function AuthLayout({
       
       <div className="w-full max-w-md z-10 px-4">
         <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 rounded-xl flex items-center justify-center mb-4 overflow-hidden shadow-[0_0_20px_rgba(52,211,153,0.15)] border border-primary/20">
-            <LogoMark className="h-10 w-10 text-primary" />
-          </div>
+          <LogoMark className="h-16 w-16 mb-4 text-primary drop-shadow-[0_0_20px_rgba(0,196,131,0.25)]" />
           <h1 className="text-2xl font-semibold tracking-tight">Zchema</h1>
           <p className="text-sm text-muted-foreground mt-2">See what breaks before it breaks</p>
         </div>
